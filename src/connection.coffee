@@ -15,7 +15,10 @@ module.exports = class Connection
         name: 'beatrix'
         autoDelete: false
         durable: true
-        arguments: {}
+        type: 'x-delayed-message'
+        arguments: {
+          'x-delayed-type': 'direct'
+        }
       }
       onUnhandled: (message) ->
         @log.error 'Unhandled message', message
@@ -28,10 +31,6 @@ module.exports = class Connection
     @stats = @options.stats
     @onUnhandled = @options.onUnhandled
     @queues = {}
-
-    # unchangeable
-    @options.exchange.type = 'x-delayed-message'
-    @options.exchange.arguments['x-delayed-type'] = 'direct'
 
   connect: (cb) ->
     Rabbot.onUnhandled @onUnhandled.bind @
