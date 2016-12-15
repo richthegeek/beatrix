@@ -45,8 +45,9 @@ module.exports = class Queue
           @lastPublish = 0
       ), 60 * 1000
 
-      return cb null, @
-    .catch (err) ->
+      return cb? null, @
+    .catch (err) =>
+      @log.error {type}, "Could not initialise queue", err
       cb "Could not initialise queue: #{err.stack}", @
 
   createJob: (body, options) ->

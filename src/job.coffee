@@ -112,17 +112,19 @@ module.exports = class Job
     @stats 'timing', @type, 'run', Date.now() - headers.startedAt
     @queue.lastComplete = Date.now()
 
-    if err
-      if result?.retry isnt false and message.shouldRetry isnt false and not message.lastAttempt
+    if err and result?.retry isnt false and message.shouldRetry isnt false and not message.lastAttempt
         @stats 'increment', @type, 'part_fail', 1
         @log.error @processLogMeta(message), 'Failed and retrying', err
         @partFailure? message
         @queue.publish message.body, message.properties
-      else
+        return message.finish({ok: false, final: false, result: err})
+    
+    if err
         @stats 'increment', @type, 'full_fail', 1
         @log.error @processLogMeta(message, {retry: result?.retry, lastAttempt: message.lastAttempt}), "Failed completely", err
         @fullFailure? message
-    else
-      @stats 'increment', @type, 'ok', 1
-      @log.info @processLogMeta(message), 'Completed without error', result
-      message.finish(err, result)
+        return message.finish({ok: false, final: true, result: err})
+
+    @stats 'increment', @type, 'ok', 1
+    @log.info @processLogMeta(message), 'Completed without error', result
+    return message.finish({ok: true, final: true, result: result})
