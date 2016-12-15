@@ -1,0 +1,36 @@
+{
+  "name": "beatrix",
+  "version": "1.0.0",
+  "description": "Opinionated RabbitMQ implementation",
+  "main": "index.js",
+  "scripts": {
+    "build": "./node_modules/.bin/coffee -cmo lib src",
+    "dev:build": "./node_modules/.bin/coffee -cmo lib -w src",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/veoo/beatrix.git"
+  },
+  "keywords": [
+    "rabbit",
+    "rabbitmq",
+    "rabbot",
+    "amqp"
+  ],
+  "author": "Richard Lyon",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/veoo/beatrix/issues"
+  },
+  "homepage": "https://github.com/veoo/beatrix#readme",
+  "dependencies": {
+    "callback-timeout": "^2.1.0",
+    "lodash": "^4.17.2",
+    "rabbot": "^1.0.6"
+  },
+  "devDependencies": {
+    "coffee-script": "^1.12.1",
+    "source-map-support": "^0.4.6"
+  }
+}
