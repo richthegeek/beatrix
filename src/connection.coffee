@@ -32,6 +32,13 @@ module.exports = class Connection
     @onUnhandled = @options.onUnhandled
     @queues = {}
 
+    _.each options.queues, (opts, name) =>
+      @queues[name] = {
+        publish: => @queues[name].stack.push(['publish', arguments])
+        request: => @queues[name].stack.push(['request', arguments])
+        stack: []
+      }
+
   connect: (cb) ->
     Rabbot.onUnhandled @onUnhandled.bind @
     return Rabbot.configure({
@@ -45,8 +52,17 @@ module.exports = class Connection
       return @
 
   createQueue: (name, options, cb) ->
-    @queues[name] = new Queue name, options, @
-    return @queues[name].connect cb
+    stack = @queues[name]?.stack
+
+    @queues[name] = queue = new Queue name, options, @
+    return @queues[name].connect (err) ->
+      if err
+        return cb? err
+
+      for item in stack
+        queue[item[0]].apply queue, item[1]
+
+      cb? null, queue
 
   partFailure: (message) ->
     @options.partFailure? message

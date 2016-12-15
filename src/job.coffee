@@ -52,7 +52,7 @@ module.exports = class Job
       return false
 
     @log.info {type: @type, id: options.messageId}, 'Publishing job to queue', options
-    return Rabbot.publish(@connection.exchange.name, options).then((res) -> cb null, res).catch(cb)
+    return Rabbot.publish(@connection.exchange.name, options).then((res) -> cb? null, res).catch(cb)
 
   request: (body, options, cb) ->
     options = @mergePublishOptions body, options
@@ -66,7 +66,7 @@ module.exports = class Job
     @log.info {type: @type, id: options.messageId}, 'Requesting job in queue', options
     Rabbot.request(@connection.exchange.name, options).then((res) ->
       try res.ack()
-      cb null, res
+      cb? null, res
     ).catch(cb)
 
   partFailure: (message) ->
@@ -91,10 +91,13 @@ module.exports = class Job
     message.finish = _.once message[if headers.reply then 'reply' else 'ack'].bind(message)
 
     @log.info @processLogMeta(message, {timeout: @queue.options.timeout}), 'Starting'
-    @queue.options.process message, Timeout(
-      @processCallback.bind(@, message),
-      @queue.options.timeout
-    )
+    try
+      @queue.options.process message, Timeout(
+        @processCallback.bind(@, message),
+        @queue.options.timeout
+      )
+    catch err
+      @processCallback message, err, err
 
   processLogMeta: (message, extra) =>
      return _.extend extra, {
