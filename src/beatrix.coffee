@@ -12,10 +12,8 @@ module.exports = (options, cb) ->
     if err
       return cb? err
 
-    setTimeout (->
-      for name, queueopts of options.queues when options.enabled isnt false
-        connection.createQueue(name, queueopts)
-    ), 5000
+    for name, queueopts of options.queues when options.enabled isnt false
+      connection.createQueue(name, queueopts)
     
     return cb? null, connection
 

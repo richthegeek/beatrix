@@ -45,21 +45,27 @@ module.exports = class Connection
       connection: @options.connection,
       exchanges: [@options.exchange]
     }).then () =>
+      @log.error 'RabbitMQ Connected!'
       cb null, @
       return @
     .catch (err) =>
+      @log.error 'Could not connect', err
       cb err, @
       return @
 
   createQueue: (name, options, cb) ->
     stack = @queues[name]?.stack
 
+    @log.info 'Create Queue: ' + name
+
     @queues[name] = queue = new Queue name, options, @
-    return @queues[name].connect (err) ->
+    return @queues[name].connect (err) =>
       if err
+        @log.error 'Could not create queue', err
         return cb? err
 
       for item in stack
+        @log.info 'Add item from stack', item
         queue[item[0]].apply queue, item[1]
 
       cb? null, queue
