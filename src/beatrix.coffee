@@ -8,14 +8,16 @@ _ = require 'lodash'
 
 module.exports = (options, cb) ->
   connection = new Connection(options)
-  return connection.connect (err) ->
+  connection.connect (err) ->
     if err
-      return cb err
+      return cb? err
 
     for name, queueopts of options.queues when options.enabled isnt false
       connection.createQueue(name, queueopts)
 
-    return cb null, connection
+    return cb? null, connection
+
+  return connection
 
 module.exports.Connection = Connection
 module.exports.Queue = Queue
