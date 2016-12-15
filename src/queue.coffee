@@ -10,7 +10,7 @@ module.exports = class Queue
     @options = _.defaultsDeep options, {
       name: @name
       type: @connection.exchange.name + '.' + @name
-      timeout: 60 * 1000
+      timeout: null
       concurrency: 1
       id: 0
     }
@@ -20,8 +20,6 @@ module.exports = class Queue
 
   connect: (cb) ->
     {name, type, concurrency} = @options
-
-    console.log name, type, @connection.exchange.name
 
     Rabbot.handle({
       queue: type,

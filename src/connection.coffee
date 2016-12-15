@@ -17,21 +17,21 @@ module.exports = class Connection
         durable: true
         arguments: {}
       }
+      onUnhandled: (message) ->
+        @log.error 'Unhandled message', message
+        message.ack()
     }
 
     # for children to link to
     @exchange = @options.exchange
     @log = @options.log
     @stats = @options.stats
+    @onUnhandled = @options.onUnhandled
     @queues = {}
 
     # unchangeable
     @options.exchange.type = 'x-delayed-message'
     @options.exchange.arguments['x-delayed-type'] = 'direct'
-  
-  onUnhandled: (message) ->
-    @log.error 'Unhandled message', message
-    message.ack()
 
   connect: (cb) ->
     Rabbot.onUnhandled @onUnhandled.bind @
