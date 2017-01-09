@@ -15,6 +15,8 @@ module.exports = class Queue
       id: 0
     }
 
+    @connected = false
+    @stack = @connection.queues?[@name]?.stack ? []
     @lastPublish = 0
     @lastComplete = 0
 
@@ -45,19 +47,31 @@ module.exports = class Queue
           @lastPublish = 0
       ), 60 * 1000
 
+      # enqueue any jobs that were added while not connected
+      # short delay required to function correctly
+      @connected = true
+      setTimeout (=>
+        for item in @stack
+          @[item.type](item.body, item.options, item.cb)
+      ), 100
+
       return cb? null, @
     .catch (err) =>
       @log.error {type}, "Could not initialise queue", err
+      @connected = false
       cb "Could not initialise queue: #{err.stack}", @
 
-  createJob: (body, options) ->
-    return new Job @options.type, body, options, @
-
   publish: (body, options, cb) ->
+    unless @connected
+      return @stack.push {type: 'publish', body, options, cb}
+
     job = new Job @options.type, @
     job.publish body, options, cb
 
   request: (body, options, cb) ->
+    unless @connected
+      return @stack.push {type: 'request', body, options, cb}
+
     job = new Job @options.type, @
     job.request body, options, cb
 
