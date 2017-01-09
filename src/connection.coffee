@@ -54,7 +54,7 @@ module.exports = class Connection
       return @
 
   createQueue: (name, options, cb) ->
-    stack = @queues[name]?.stack
+    stack = @queues[name]?.stack ? []
 
     @log.info 'Create Queue: ' + name
 
