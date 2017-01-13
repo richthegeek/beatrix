@@ -51,6 +51,7 @@ module.exports = class Queue
       # short delay required to function correctly
       @connected = true
       setTimeout (=>
+        @log.debug 'Pre-connect stack:', @stack
         for item in @stack
           @[item.type](item.body, item.options, item.cb)
       ), 100

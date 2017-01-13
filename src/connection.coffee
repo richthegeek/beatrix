@@ -34,8 +34,8 @@ module.exports = class Connection
 
     _.each options.queues, (opts, name) =>
       @queues[name] = {
-        publish: => @queues[name].stack.push(['publish', arguments])
-        request: => @queues[name].stack.push(['request', arguments])
+        publish: (body, options, cb) => @queues[name].stack.push {type: 'publish', body, options, cb}
+        request: (body, options, cb) => @queues[name].stack.push {type: 'publish', body, options, cb}
         stack: []
       }
 
