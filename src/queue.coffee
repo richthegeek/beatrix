@@ -15,21 +15,27 @@ module.exports = class Queue
       id: 0
     }
 
+    @handle = false
     @connected = false
     @stack = @connection.queues?[@name]?.stack ? []
     @lastPublish = 0
     @lastComplete = 0
 
-  connect: (cb) ->
-    {name, type, concurrency} = @options
-
-    Rabbot.handle({
+  createHandle: ->
+    type = @options.type
+    @handle?.remove?()
+    @handle = Rabbot.handle({
       queue: type,
       type: type,
       autoNack: true,
       handler: @processJob,
       context: @
     })
+
+  connect: (cb) ->
+    {name, type, concurrency} = @options
+
+    @createHandle()
     
     return Rabbot.addQueue(type, {
       subscribe: true,
@@ -43,15 +49,23 @@ module.exports = class Queue
       # experimental: log the difference between the last publish on this queue and the last completion
       setInterval (=>
         if @lastPublish
-          @stats 'timing', type, 'lag', Math.abs @lastPublish - @lastComplete
-          @lastPublish = 0
-      ), 60 * 1000
+          # rebind the handler if the delay between publishing and completing
+          # is double the timeout for completing any job in this queue
+          lag = @lastPublish - @lastComplete
+          timeout = (@options.timeout | 0) or 60 * 1000
+          if lag > Math.min(2 * timeout, 10 * 1000)
+            @log.info {type}, 'Rebinding queue'
+            @lastPublish = 0
+            @lastComplete = 0
+            @createHandle()
+
+          @stats 'timing', type, 'lag', Math.abs lag
+      ), 10 * 1000
 
       # enqueue any jobs that were added while not connected
       # short delay required to function correctly
       @connected = true
       setTimeout (=>
-        @log.debug 'Pre-connect stack:', @stack
         for item in @stack
           @[item.type](item.body, item.options, item.cb)
       ), 100
