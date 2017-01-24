@@ -53,7 +53,7 @@ module.exports = class Queue
           # is double the timeout for completing any job in this queue
           lag = @lastPublish - @lastComplete
           timeout = (@options.timeout | 0) or 60 * 1000
-          if lag > Math.min(2 * timeout, 10 * 1000)
+          if lag > Math.max(2 * timeout, 10 * 1000)
             @log.info {type}, 'Rebinding queue'
             @lastPublish = 0
             @lastComplete = 0
