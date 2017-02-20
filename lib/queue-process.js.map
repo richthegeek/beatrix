@@ -1,0 +1,10 @@
+{
+  "version": 3,
+  "file": "queue-process.js",
+  "sourceRoot": "..",
+  "sources": [
+    "src/queue-process.coffee"
+  ],
+  "names": [],
+  "mappings": ";AAAA;EAAA,OAAO,CAAC,GAAR,CAAY,OAAO,CAAC,GAApB;AAAA"
+}
