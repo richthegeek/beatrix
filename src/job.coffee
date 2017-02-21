@@ -89,11 +89,12 @@ module.exports = class Job
     
     # message.reply = _.attempt.bind(_, message.reply.bind(message))
     # message.ack = _.attempt.bind(_, message.ack.bind(message))
-    message.finish = _.once ->
+    message.finish = ->
       if headers.reply
+        @log.info 'REPLYING', arguments
         message.reply arguments...
       else
-        message.ack arguments...
+        @log.info 'ACKING', message.ack()
 
     @log.info @processLogMeta(message, {timeout: @queue.options.timeout}), 'Starting'
     try
