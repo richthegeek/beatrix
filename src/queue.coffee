@@ -22,7 +22,8 @@ module.exports = class Queue
     @lastComplete = 0
 
   createHandle: ->
-    type = @options.type
+    {name, type, concurrency} = @options
+    
     @handle?.remove?()
     @handle = Rabbot.handle({
       queue: type,
@@ -31,11 +32,6 @@ module.exports = class Queue
       handler: @processJob,
       context: @
     })
-
-  connect: (cb) ->
-    {name, type, concurrency} = @options
-
-    @createHandle()
     
     return Rabbot.addQueue(type, {
       subscribe: true,
@@ -43,7 +39,11 @@ module.exports = class Queue
       durable: true,
       limit: concurrency
     }).then =>
-      Rabbot.bindQueue @connection.exchange.name, type, [type]
+      Rabbot.bindQueue @connection.exchange.name, type, [type] 
+
+  connect: (cb) ->
+    {name, type, concurrency} = @options
+    @createHandle().then =>
       @log.info {type, concurrency}, "RabbitMQ Queue Started"
 
       # experimental: log the difference between the last publish on this queue and the last completion
@@ -55,8 +55,6 @@ module.exports = class Queue
           timeout = (@options.timeout | 0) or 60 * 1000
           if lag > Math.max(2 * timeout, 10 * 1000)
             @log.info {type}, 'Rebinding queue'
-            @lastPublish = 0
-            @lastComplete = 0
             @createHandle()
 
           @stats 'timing', type, 'lag', Math.abs lag
