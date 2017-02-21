@@ -86,9 +86,14 @@ module.exports = class Job
     message.firstAttempt = message.attempt is 1
     message.lastAttempt = (headers.attempts >= headers.maxAttempts)
     message.retry = (val = true) -> message.shouldRetry = val
-    message.reply = _.once message.reply
-    message.ack = _.once message.ack
-    message.finish = _.once message[if headers.reply then 'reply' else 'ack'].bind(message)
+    
+    # message.reply = _.attempt.bind(_, message.reply.bind(message))
+    # message.ack = _.attempt.bind(_, message.ack.bind(message))
+    message.finish = _.once ->
+      if headers.reply
+        message.reply arguments...
+      else
+        message.ack arguments...
 
     @log.info @processLogMeta(message, {timeout: @queue.options.timeout}), 'Starting'
     try
