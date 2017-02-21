@@ -116,25 +116,34 @@ module.exports = class Job
     }
 
   processCallback: (message, err, result) =>
-    headers = message.properties.headers
+    try
+      headers = message.properties.headers
 
-    @stats 'timing', @type, 'e2e', Date.now() - headers.publishedAt
-    @stats 'timing', @type, 'run', Date.now() - headers.startedAt
+      @stats 'timing', @type, 'e2e', Date.now() - headers.publishedAt
+      @stats 'timing', @type, 'run', Date.now() - headers.startedAt
 
-    if err and result?.retry isnt false and message.shouldRetry isnt false and not message.lastAttempt
+      if err and result?.retry isnt false and message.shouldRetry isnt false and not message.lastAttempt
+        message.finish({ok: false, final: false, result: err})
         @stats 'increment', @type, 'part_fail', 1
-        @log.error @processLogMeta(message), 'Failed and retrying', err
         @partFailure? message
         @queue.publish message.body, message.properties
-        return message.finish({ok: false, final: false, result: err})
-    
-    if err
+        @log.error @processLogMeta(message), 'Failed and retrying', err
+        return false
+      
+      if err
+        message.finish({ok: false, final: true, result: err})
         @stats 'increment', @type, 'full_fail', 1
-        @log.error @processLogMeta(message, {retry: result?.retry, lastAttempt: message.lastAttempt}), "Failed completely", err
         @fullFailure? message
-        return message.finish({ok: false, final: true, result: err})
+        @log.error @processLogMeta(message, {retry: result?.retry, lastAttempt: message.lastAttempt}), "Failed completely", err
+        return false 
 
-    @queue.lastComplete = Date.now()
-    @stats 'increment', @type, 'ok', 1
-    @log.info @processLogMeta(message), 'Completed without error', result
-    return message.finish({ok: true, final: true, result: result})
+      message.finish({ok: true, final: true, result: result})
+
+      @queue.lastComplete = Date.now()
+      @stats 'increment', @type, 'ok', 1
+      @log.info @processLogMeta(message), 'Completed without error', result
+      return true
+
+    catch err
+      message.finish({ok: false, final: false, result: err})
+      @log.error 'processCallback error', err
