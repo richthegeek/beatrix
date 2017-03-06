@@ -22,7 +22,7 @@ module.exports = class Queue
     @lastComplete = 0
 
   createHandle: ->
-    {name, type, concurrency} = @options
+    {name, type, concurrency, noBatch} = @options
     
     @handle?.remove?()
     @handle = Rabbot.handle({
@@ -37,6 +37,7 @@ module.exports = class Queue
       subscribe: true,
       autoDelete: false,
       durable: true,
+      noBatch: (noBatch isnt false),
       limit: concurrency
     }).then =>
       Rabbot.bindQueue @connection.exchange.name, type, [type] 
@@ -53,10 +54,6 @@ module.exports = class Queue
           # is double the timeout for completing any job in this queue
           lag = @lastPublish - @lastComplete
           timeout = (@options.timeout | 0) or 60 * 1000
-          if Math.abs(Date.now() - @lastComplete) > Math.max(2 * timeout, 10 * 1000)
-            @log.info {type}, 'Rebinding queue'
-            @createHandle()
-
           @stats 'timing', type, 'lag', Math.abs lag
       ), 10 * 1000
 

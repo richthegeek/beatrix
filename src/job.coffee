@@ -86,16 +86,6 @@ module.exports = class Job
     message.firstAttempt = message.attempt is 1
     message.lastAttempt = (headers.attempts >= headers.maxAttempts)
     message.retry = (val = true) -> message.shouldRetry = val
-    
-    # message.reply = _.attempt.bind(_, message.reply.bind(message))
-    # message.ack = _.attempt.bind(_, message.ack.bind(message))
-    message.finish = =>
-      if headers.reply
-        @log.info 'REPLYING', arguments
-        message.reply arguments...
-      else
-        @log.info 'ACKING', arguments
-        message.ack()
 
     @log.info @processLogMeta(message, {timeout: @queue.options.timeout}), 'Starting'
     try
@@ -116,14 +106,23 @@ module.exports = class Job
     }
 
   processCallback: (message, err, result) =>
-    try
-      headers = message.properties.headers
+    headers = message.properties.headers
+    finish = (err, result, final = true) =>
+      ok = not err
+      result = err or result
+      if headers.reply
+        message.reply {ok, final, result}
+        @log.info 'Replying', {ok, result}
+      else
+        message.ack()
+        @log.info 'ACKing', {ok, result}
 
+    try
       @stats 'timing', @type, 'e2e', Date.now() - headers.publishedAt
       @stats 'timing', @type, 'run', Date.now() - headers.startedAt
 
       if err and result?.retry isnt false and message.shouldRetry isnt false and not message.lastAttempt
-        message.finish({ok: false, final: false, result: err})
+        finish err, null, false
         @stats 'increment', @type, 'part_fail', 1
         @partFailure? message
         @queue.publish message.body, message.properties
@@ -131,13 +130,13 @@ module.exports = class Job
         return false
       
       if err
-        message.finish({ok: false, final: true, result: err})
+        finish err
         @stats 'increment', @type, 'full_fail', 1
         @fullFailure? message
         @log.error @processLogMeta(message, {retry: result?.retry, lastAttempt: message.lastAttempt}), "Failed completely", err
         return false 
 
-      message.finish({ok: true, final: true, result: result})
+      finish null, result
 
       @queue.lastComplete = Date.now()
       @stats 'increment', @type, 'ok', 1
@@ -145,5 +144,5 @@ module.exports = class Job
       return true
 
     catch err
-      message.finish({ok: false, final: false, result: err})
+      finish err
       @log.error 'processCallback error', err
