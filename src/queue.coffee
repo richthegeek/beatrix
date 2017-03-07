@@ -55,6 +55,13 @@ module.exports = class Queue
           lag = @lastPublish - @lastComplete
           timeout = (@options.timeout | 0) or 60 * 1000
           @stats 'timing', type, 'lag', Math.abs lag
+
+          if @lastPublish > 0 and Math.abs(Date.now() - @lastComplete) > Math.max(2 * timeout, 10 * 1000)
+            @log.info {type}, 'Rebinding Queue'
+            @createHandle()
+            @lastPublish = 0
+            @lastComplete = 0
+
       ), 10 * 1000
 
       # enqueue any jobs that were added while not connected
