@@ -2,6 +2,9 @@ _ = require('lodash')
 Rabbot = require('rabbot')
 Queue = require('./queue')
 
+Rabbot.nackOnError()
+Rabbot.nackUnhandled()
+
 module.exports = class Connection
 
   constructor: (options) ->
@@ -22,7 +25,7 @@ module.exports = class Connection
       }
       onUnhandled: (message) ->
         @log.error 'Unhandled message', message
-        message.ack()
+        message.nack()
     }
 
     # for children to link to

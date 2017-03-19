@@ -39,7 +39,7 @@ module.exports = class Queue
       durable: true,
       noBatch: (noBatch isnt false),
       limit: concurrency
-    }).then =>
+    }).finally =>
       Rabbot.bindQueue @connection.exchange.name, type, [type] 
 
   connect: (cb) ->

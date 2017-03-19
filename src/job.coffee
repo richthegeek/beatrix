@@ -110,7 +110,7 @@ module.exports = class Job
     finish = (err, result, final = true) =>
       ok = not err
       result = err or result
-      if headers.reply
+      if headers?.reply
         message.reply {ok, final, result}
         @log.info 'Replying', {ok, result}
       else
