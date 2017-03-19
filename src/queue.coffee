@@ -39,13 +39,20 @@ module.exports = class Queue
       durable: true,
       noBatch: (noBatch isnt false),
       limit: concurrency
-    }).finally =>
+    }).then (@internalQueue) =>
       Rabbot.bindQueue @connection.exchange.name, type, [type] 
 
   connect: (cb) ->
     {name, type, concurrency} = @options
     @createHandle().then =>
       @log.info {type, concurrency}, "RabbitMQ Queue Started"
+
+      setInterval (=>
+        state = _.get @internalQueue, 'state'
+        unless state is 'subscribed'
+          @internalQueue.subscribe()
+          @log.error {type}, 'Resubscribing queue, state was: ' + state
+      ), 1000
 
       # experimental: log the difference between the last publish on this queue and the last completion
       setInterval (=>
