@@ -1,9 +1,8 @@
 _ = require('lodash')
-Rabbot = require('rabbot')
+os = require('os')
+Rabbit = require('amqplib')
 Queue = require('./queue')
-
-Rabbot.nackOnError()
-Rabbot.nackUnhandled()
+Timeout = require('./callbackTimeout')
 
 module.exports = class Connection
 
@@ -34,6 +33,7 @@ module.exports = class Connection
     @stats = @options.stats
     @onUnhandled = @options.onUnhandled
     @queues = {}
+    @pendingResponses = {}
 
     _.each options.queues, (opts, name) =>
       @queues[name] = {
@@ -42,23 +42,28 @@ module.exports = class Connection
         stack: []
       }
 
+  reply: (id, err, res) ->
+
+
   connect: (cb) ->
-    Rabbot.onUnhandled @onUnhandled.bind @
-    return Rabbot.configure({
-      connection: @options.connection,
-      exchanges: [@options.exchange]
-    }).then () =>
-      @log.error 'RabbitMQ Connected!'
-      cb null, @
-      return @
-    .catch (err) =>
-      @log.error 'Could not connect', err
-      cb err, @
-      return @
+    return Rabbit.connect(@options.connection.uri, {heartbeat: 5})
+      .then (@connection) =>
+        return @connection.createChannel()
+      .then (@channel) =>
+        @channel.assertExchange(@exchange.name, @exchange.type, _.omit(@exchange, 'name', 'type'))
+      .then =>
+        @createResponseQueue()
+        @log.info 'RabbitMQ Connected!'
+        cb null, @
+        return @
+      .catch (err) =>
+        @log.error 'Could not connect', err
+        cb err, @
+        return @
 
   createQueue: (name, options, cb) ->
     @log.info 'Create Queue: ' + name
-    @queues[name] = queue = new Queue name, options, @
+    @queues[name] = new Queue name, options, @
     return @queues[name].connect (err) =>
       if err
         @log.error 'Could not create queue', err
@@ -71,3 +76,31 @@ module.exports = class Connection
 
   fullFailure: (message) ->
     @options.fullFailure? message
+
+  createResponseQueue: ->
+    @responseQueue = [os.hostname(), process.title, process.pid, 'response', 'queue'].join('.')
+    
+    queue = new Queue @responseQueue, {
+      name: @responseQueue,
+      type: @responseQueue,
+      autoDelete: true,
+      exclusive: true,
+      messageTtl: 600 * 1000, # clear messages out after 10 minutes
+    }, @
+    
+    queue.processJob = (message) =>
+      queue.channel.ack message
+      
+      body = JSON.parse message.content
+      
+      cb = @pendingResponses[message.properties.correlationId]
+      cb? body.err, body.result
+
+    queue.connect()
+
+  addRequestCallback: (options, cb) ->
+    fn = _.once (err, res) =>
+      delete @pendingResponses[options.correlationId]
+      cb err, res
+
+    @pendingResponses[options.correlationId] = Timeout options.replyTimeout, fn

@@ -1,6 +1,6 @@
 {
   "name": "beatrix",
-  "version": "1.2.2",
+  "version": "2.0.0",
   "description": "Opinionated RabbitMQ implementation",
   "main": "index.js",
   "scripts": {
@@ -15,7 +15,6 @@
   "keywords": [
     "rabbit",
     "rabbitmq",
-    "rabbot",
     "amqp"
   ],
   "author": "Richard Lyon",
@@ -25,9 +24,8 @@
   },
   "homepage": "https://github.com/veoo/beatrix#readme",
   "dependencies": {
-    "callback-timeout": "^2.1.0",
-    "lodash": "^4.17.2",
-    "rabbot": "^1.0.6"
+    "amqplib": "^0.5.1",
+    "lodash": "^4.17.2"
   },
   "devDependencies": {
     "coffee-script": "^1.12.1",

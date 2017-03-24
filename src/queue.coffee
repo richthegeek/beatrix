@@ -1,5 +1,5 @@
 _ = require 'lodash'
-Rabbot = require('rabbot')
+Rabbit = require('amqplib')
 Job = require('./job')
 
 module.exports = class Queue
@@ -12,78 +12,67 @@ module.exports = class Queue
       type: @connection.exchange.name + '.' + @name
       timeout: null
       concurrency: 1
-      id: 0
+      id: 0,
+      durable: true,
+      autoDelete: false
     }
 
-    @handle = false
     @connected = false
     @stack = @connection.queues?[@name]?.stack ? []
     @lastPublish = 0
     @lastComplete = 0
 
-  createHandle: ->
-    {name, type, concurrency, noBatch} = @options
-    
-    @handle?.remove?()
-    @handle = Rabbot.handle({
-      queue: type,
-      type: type,
-      autoNack: true,
-      handler: @processJob,
-      context: @
-    })
-    
-    return Rabbot.addQueue(type, {
-      subscribe: true,
-      autoDelete: false,
-      durable: true,
-      noBatch: (noBatch isnt false),
-      limit: concurrency
-    }).then (@internalQueue) =>
-      Rabbot.bindQueue @connection.exchange.name, type, [type] 
-
   connect: (cb) ->
     {name, type, concurrency} = @options
-    @createHandle().then =>
-      @log.info {type, concurrency}, "RabbitMQ Queue Started"
+    
+    @channel?.close?()
+    
+    return @connection.connection.createChannel()
+      .then (@channel) =>
+        @channel.assertQueue type, _.omit @options, ['name', 'type', 'concurrency']
+      .then =>
+        @channel.bindQueue(type, @connection.exchange.name, type)
+      .then =>
+        @channel.recover()
+      .then =>
+        @channel.prefetch(concurrency)
+      .then =>
+        @channel.consume type, @processJob.bind(@)
+      .then =>
+        # stats the number of messages and consumers
+        timer = setInterval (=>
+          @channel.checkQueue(type).then (ok) =>
+            @stats 'increment', type, 'consumers', ok.consumerCount
+            @stats 'increment', type, 'messages', ok.messageCount
+        ), 30 * 1000
 
-      setInterval (=>
-        state = _.get @internalQueue, 'state'
-        unless state is 'subscribed'
-          @internalQueue.subscribe()
-          @log.error {type}, 'Resubscribing queue, state was: ' + state
-      ), 1000
+        # reconnect on close
+        @channel.on 'close', =>
+          @log.error {type}, 'Channel closed. Reconnecting.'
+          clearTimeout(timer)
+          @connected = false
+          @connect()
 
-      # experimental: log the difference between the last publish on this queue and the last completion
-      setInterval (=>
-        if @lastPublish
-          # rebind the handler if the delay between publishing and completing
-          # is double the timeout for completing any job in this queue
-          lag = @lastPublish - @lastComplete
-          timeout = (@options.timeout | 0) or 60 * 1000
-          @stats 'timing', type, 'lag', Math.abs lag
+        # Log on error
+        @channel.on 'error', (err) =>
+          @log.error {type}, 'Channel errored.', err
 
-          if @lastPublish > 0 and Math.abs(Date.now() - @lastComplete) > Math.max(2 * timeout, 10 * 1000)
-            @log.info {type}, 'Rebinding Queue'
-            @createHandle()
-            @lastPublish = 0
-            @lastComplete = 0
+        # Log on returned/unroutable message
+        @channel.on 'returned', (msg) =>
+          @log.error {type}, 'Unroutable message returned!'
 
-      ), 10 * 1000
+        # after connection, publish any held messages
+        @connected = true
+        setTimeout (=>
+          for item in @stack
+            @[item.type](item.body, item.options, item.cb)
+        ), 100
 
-      # enqueue any jobs that were added while not connected
-      # short delay required to function correctly
-      @connected = true
-      setTimeout (=>
-        for item in @stack
-          @[item.type](item.body, item.options, item.cb)
-      ), 100
+        cb? null, @
 
-      return cb? null, @
-    .catch (err) =>
-      @log.error {type}, "Could not initialise queue", err
-      @connected = false
-      cb "Could not initialise queue: #{err.stack}", @
+      .catch (err) =>
+        @log.error {type}, "Could not connect queue", err.stack
+        setTimeout (=> @connect(cb)), 1000
 
   publish: (body, options, cb) ->
     unless @connected

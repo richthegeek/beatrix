@@ -1,6 +1,6 @@
 _ = require 'lodash'
-Rabbot = require('rabbot')
-Timeout = require('callback-timeout')
+Rabbit = require('amqplib')
+Timeout = require('./callbackTimeout')
 
 module.exports = class Job
 
@@ -8,30 +8,32 @@ module.exports = class Job
     @connection = @queue.connection
     @stats = @connection.stats
     @log = @connection.log
+    @channel = @queue.channel
 
-  mergePublishOptions: (body, options) ->
+  mergePublishOptions: (options) ->
     @queue.lastPublish = Date.now()
 
     options = _.defaultsDeep {}, options, @queue.options, {
       type: @type
+      contentType: 'application/json'
       publishedAt: Date.now(),
       headers: {},
       attempts: 0
       maxAttempts: 1,
       initialDelay: 0,
       delay: 1000,
-      id: @queue.options.id + 1,
-      body: body
     }
 
     unless options.messageId?
       options.messageId = @queue.options.name + '.' + (++@queue.options.id)
 
+    options.timestamp = Date.now()
+
     options.routingKey = options.type = @type
     delete options.timeout # this is an option for Rabbot, delete it to prevent issues
 
     # copy things over to the headers
-    _.defaults options.headers, _.pick options, ['attempts', 'maxAttempts', 'delay', 'publishedAt']
+    _.defaults options.headers, _.pick options, ['attempts', 'maxAttempts', 'delay']
 
     # set the delay
     if options.headers.attempts > 0 and options.headers.delay
@@ -39,35 +41,30 @@ module.exports = class Job
     else if options.initialDelay
       options.headers['x-delay'] = options.initialDelay
 
-    return _.pick options, ['headers', 'messageId', 'routingKey', 'type', 'body']
+    return options
 
-  hasAttemptsRemaining: ({headers}) ->
-    return headers.attempts < headers.maxAttempts
+  publish: (body, options) ->
+    options = @mergePublishOptions options
 
-  publish: (body, options, cb) ->
-    options = @mergePublishOptions body, options
-
-    unless @hasAttemptsRemaining options
+    unless options.headers.attempts < options.headers.maxAttempts
       @log.info {type: @type}, "Rejecting publish due to too many attempts: #{options.headers.attempts} >= #{options.headers.maxAttempts}"
       return false
 
-    @log.info {type: @type, id: options.messageId}, 'Publishing job to queue', options
-    return Rabbot.publish(@connection.exchange.name, options).then((res) -> cb? null, res).catch(cb)
+    @log.info {type: @type, id: options.messageId, request: options.replyTo?}, 'Publishing job to queue', body
+
+    body = new Buffer JSON.stringify body
+    return @channel.publish(@connection.exchange.name, @type, body, options)
 
   request: (body, options, cb) ->
-    options = @mergePublishOptions body, options
-    options.replyTimeout ?= 5000
-    options.headers.reply = true
+    options = _.defaults {}, options, {
+      replyTimeout: 5000,
+      replyTo: @connection.responseQueue,
+      correlationId: Date.now().toString()
+    }
 
-    unless @hasAttemptsRemaining options
-      @log.info {type: @type}, "Rejecting publish due to too many attempts: #{options.headers.attempts} >= #{options.headers.maxAttempts}"
-      return false
+    @connection.addRequestCallback options, cb
 
-    @log.info {type: @type, id: options.messageId}, 'Requesting job in queue', options
-    Rabbot.request(@connection.exchange.name, options).then((res) ->
-      try res.ack()
-      cb? null, res
-    ).catch(cb)
+    return @publish body, options
 
   partFailure: (message) ->
     @queue.partFailure? message
@@ -76,25 +73,39 @@ module.exports = class Job
     @queue.fullFailure? message
 
   process: (message) ->
-    headers = message.properties.headers
+    props = message.properties
+    headers = props.headers
     headers.attempts += 1
     headers.startedAt = Date.now()
 
-    @stats 'timing', @type, 'startDelay', Date.now() - message.properties.timestamp
+    @stats 'timing', @type, 'startDelay', Date.now() - props.timestamp
+
+    message.ack = => @channel.ack message
+    message.nack = => @channel.nack message
+    message.body = JSON.parse message.content
 
     message.attempt = headers.attempts
     message.firstAttempt = message.attempt is 1
     message.lastAttempt = (headers.attempts >= headers.maxAttempts)
-    message.retry = (val = true) -> message.shouldRetry = val
+
+    message.finish = (err, result, final) =>
+      message.ack()
+      
+      body = {err, result, final}
+      if props.correlationId and props.replyTo and (final or not err)
+        @log.info @processLogMeta(message), 'Replying', body
+        body = new Buffer JSON.stringify body
+        @channel.sendToQueue props.replyTo, body, {correlationId: props.correlationId}
+      else
+        @log.info @processLogMeta(message), 'Acking', body
+
 
     @log.info @processLogMeta(message, {timeout: @queue.options.timeout}), 'Starting'
+    callback = Timeout @queue.options.timeout, @processCallback.bind(@, message)
     try
-      @queue.options.process message, Timeout(
-        @processCallback.bind(@, message),
-        @queue.options.timeout
-      )
+      @queue.options.process message, callback
     catch err
-      @processCallback message, err, err
+      callback err, {retry: false}
 
   processLogMeta: (message, extra) =>
      return _.extend extra, {
@@ -102,47 +113,36 @@ module.exports = class Job
       id: message.properties.messageId,
       attempt: message.attempt,
       delaySinceStarted: Date.now() - message.properties.headers.startedAt,
-      delaySincePublished: Date.now() - message.properties.headers.publishedAt
+      delaySincePublished: Date.now() - message.properties.timestamp
     }
 
   processCallback: (message, err, result) =>
     headers = message.properties.headers
-    finish = (err, result, final = true) =>
-      ok = not err
-      result = err or result
-      if headers?.reply
-        message.reply {ok, final, result}
-        @log.info 'Replying', {ok, result}
-      else
-        message.ack()
-        @log.info 'ACKing', {ok, result}
 
     try
       @stats 'timing', @type, 'e2e', Date.now() - headers.publishedAt
       @stats 'timing', @type, 'run', Date.now() - headers.startedAt
 
       if err and result?.retry isnt false and message.shouldRetry isnt false and not message.lastAttempt
-        finish err, null, false
+        message.finish err, null, false
         @stats 'increment', @type, 'part_fail', 1
         @partFailure? message
         @queue.publish message.body, message.properties
-        @log.error @processLogMeta(message), 'Failed and retrying', err
         return false
       
       if err
-        finish err
+        message.finish err, null, true
         @stats 'increment', @type, 'full_fail', 1
         @fullFailure? message
-        @log.error @processLogMeta(message, {retry: result?.retry, lastAttempt: message.lastAttempt}), "Failed completely", err
         return false 
 
-      finish null, result
+      else
+        message.finish null, result, true
 
-      @queue.lastComplete = Date.now()
-      @stats 'increment', @type, 'ok', 1
-      @log.info @processLogMeta(message), 'Completed without error', result
-      return true
+        @queue.lastComplete = Date.now()
+        @stats 'increment', @type, 'ok', 1
+        return true
 
     catch err
-      finish err
+      message.finish err
       @log.error 'processCallback error', err

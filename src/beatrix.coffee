@@ -3,8 +3,6 @@ try require('source-map-support').install()
 Connection = require('./connection')
 Queue = require('./queue')
 Job = require('./job')
-Timeout = require('callback-timeout')
-_ = require 'lodash'
 
 module.exports = (options, cb) ->
   connection = new Connection(options)
