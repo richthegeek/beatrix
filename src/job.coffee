@@ -120,7 +120,7 @@ module.exports = class Job
     headers = message.properties.headers
 
     try
-      @stats 'timing', @type, 'e2e', Date.now() - headers.publishedAt
+      @stats 'timing', @type, 'e2e', Date.now() - message.properties.timestamp
       @stats 'timing', @type, 'run', Date.now() - headers.startedAt
 
       if err and result?.retry isnt false and message.shouldRetry isnt false and not message.lastAttempt

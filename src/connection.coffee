@@ -69,7 +69,7 @@ module.exports = class Connection
         @log.error 'Could not create queue', err
         return cb? err
 
-      cb? null, queue
+      cb? null, @queues[name]
 
   partFailure: (message) ->
     @options.partFailure? message
