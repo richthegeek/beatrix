@@ -39,12 +39,28 @@ module.exports = class Queue
       .then =>
         @channel.consume type, @processJob.bind(@)
       .then =>
-        # stats the number of messages and consumers
+        
+        offset = 0
         timer = setInterval (=>
           @channel.checkQueue(type).then (ok) =>
-            @stats 'increment', type, 'consumers', ok.consumerCount
-            @stats 'increment', type, 'messages', ok.messageCount
-        ), 30 * 1000
+            # stats the number of messages and consumers every 30 seconds
+            offset++
+            if offset is 30
+              offset = 0
+              @stats 'increment', type, 'consumers', ok.consumerCount
+              @stats 'increment', type, 'messages', ok.messageCount
+
+            # manually jog the queue every second, perhaps
+            lag = Date.now() - @lastComplete
+            timeout = @options.timeout or 60 * 1000
+            if ok.messageCount > 0 and lag > timeout
+              @channel.get(type).then (message) ->
+                if message 
+                  @log.info {type}, 'Manually retrieved message, consuming'
+                  @processJob message
+                else
+                  @log.info {type}, 'No message retrieved despite count=' + ok.messageCount + '. Investigate.'
+        ), 1000
 
         # reconnect on close
         @channel.on 'close', =>
