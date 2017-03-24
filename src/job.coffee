@@ -43,7 +43,7 @@ module.exports = class Job
 
     return options
 
-  publish: (body, options) ->
+  publish: (body, options, cb) ->
     options = @mergePublishOptions options
 
     unless options.headers.attempts < options.headers.maxAttempts
@@ -53,7 +53,12 @@ module.exports = class Job
     @log.info {type: @type, id: options.messageId, request: options.replyTo?}, 'Publishing job to queue', body
 
     body = new Buffer JSON.stringify body
-    return @channel.publish(@connection.exchange.name, @type, body, options)
+    result = @channel.publish(@connection.exchange.name, @type, body, options)
+
+    if result
+      return cb? null, 'OK'
+    else
+      return cb? 'Queue full.'
 
   request: (body, options, cb) ->
     options = _.defaults {}, options, {
