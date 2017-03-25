@@ -88,8 +88,8 @@ module.exports = class Job
 
     @stats 'timing', @type, 'startDelay', Date.now() - props.timestamp
 
-    message.ack = => @channel.ack message
-    message.nack = => @channel.nack message
+    message.ack = _.once => try @channel.ack message
+    message.nack = _.once => try @channel.nack message
     message.body = JSON.parse message.content
 
     message.attempt = headers.attempts
@@ -106,7 +106,6 @@ module.exports = class Job
         @channel.sendToQueue props.replyTo, body, {correlationId: props.correlationId}
       else
         @log.info @processLogMeta(message), 'Acking', body
-
 
     @log.info @processLogMeta(message, {timeout: @queue.options.timeout}), 'Starting'
     callback = Timeout @queue.options.timeout, @processCallback.bind(@, message)
