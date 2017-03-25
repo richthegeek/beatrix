@@ -21,6 +21,7 @@ module.exports = class Queue
     @stack = @connection.queues?[@name]?.stack ? []
     @lastPublish = 0
     @lastComplete = 0
+    @pending = 0
 
   connect: (cb) ->
     {name, type, concurrency} = @options
@@ -116,7 +117,7 @@ module.exports = class Queue
     job.process message
 
   jobSuccess: (message) ->
-    @pending--
+    @pending = Math.max(0, @pending - 1)
     @lastComplete = Date.now()
     @lastSuccess = Date.now()
     @stats 'increment', @type, 'ok', 1
@@ -124,14 +125,14 @@ module.exports = class Queue
     @connection.jobSuccess? message
   
   jobPartFailure: (message) ->
-    @pending--
+    @pending = Math.max(0, @pending - 1)
     @lastComplete = Date.now()
     @stats 'increment', @type, 'part_fail', 1
     @options.jobPartFailure? message
     @connection.jobPartFailure? message
 
   jobFullFailure: (message) ->
-    @pending--
+    @pending = Math.max(0, @pending - 1)
     @lastComplete = Date.now()
     @stats 'increment', @type, 'full_fail', 1
     @options.jobFullFailure? message
