@@ -26,7 +26,7 @@ module.exports = class Queue
   connect: (cb) ->
     {name, type, concurrency} = @options
     
-    @channel?.close?()
+    try @channel?.close?().catch (err) => null
     
     return @connection.connection.createChannel()
       .then (@channel) =>
@@ -45,28 +45,21 @@ module.exports = class Queue
         timer = setInterval (=>
           @channel.checkQueue(type).then (ok) =>
             # stats the number of messages and consumers every 30 seconds
-            offset++
-            if offset is 30
-              offset = 0
+            unless ++offset % 30
               @stats 'increment', type, 'consumers', ok.consumerCount
               @stats 'increment', type, 'messages', ok.messageCount
 
             # manually jog the queue every second, perhaps
-            lag = Date.now() - @lastComplete
-            timeout = @options.timeout or 60 * 1000
-            if @pending is 0 and ok.messageCount > 0
-              @channel.get(type).then (message) =>
+            if ok.messageCount > @pending > concurrency
+              @log.info 'RECOVER'
+              @channel.recover().then =>
+                @channel.get(type)
+              .then (message) =>
                 if message 
                   @log.info {type}, 'Manually retrieved message, consuming'
                   @processJob message
                 else
                   @log.info {type}, 'No message retrieved despite count=' + ok.messageCount + '. Investigate.'
-
-            if @pending > 0
-              @log.error {type}, 'PENDINGCOUNT=' + @pending
-              if lag > timeout
-                @log.error {type}, 'CHANNELRECOVER'
-                @channel.recover()
         ), 1000
 
         # reconnect on close
