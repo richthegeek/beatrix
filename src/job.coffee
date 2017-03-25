@@ -71,11 +71,14 @@ module.exports = class Job
 
     return @publish body, options
 
-  partFailure: (message) ->
-    @queue.partFailure? message
+  jobPartFailure: (message) ->
+    @queue.jobPartFailure? message
 
-  fullFailure: (message) ->
-    @queue.fullFailure? message
+  jobFullFailure: (message) ->
+    @queue.jobFullFailure? message
+
+  jobSuccess: (message) ->
+    @queue.jobSuccess? message
 
   process: (message) ->
     props = message.properties
@@ -130,24 +133,21 @@ module.exports = class Job
 
       if err and result?.retry isnt false and message.shouldRetry isnt false and not message.lastAttempt
         message.finish err, null, false
-        @stats 'increment', @type, 'part_fail', 1
-        @partFailure? message
         @queue.publish message.body, message.properties
+        @jobPartFailure? message
         return false
       
       if err
         message.finish err, null, true
-        @stats 'increment', @type, 'full_fail', 1
-        @fullFailure? message
+        @jobFullFailure? message
         return false 
 
       else
         message.finish null, result, true
-
-        @queue.lastComplete = Date.now()
-        @stats 'increment', @type, 'ok', 1
+        @jobSuccess? message
         return true
 
     catch err
-      message.finish err
+      message.finish err, null, true
+      @jobFullFailure? message
       @log.error 'processCallback error', err

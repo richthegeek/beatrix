@@ -53,13 +53,19 @@ module.exports = class Queue
             # manually jog the queue every second, perhaps
             lag = Date.now() - @lastComplete
             timeout = @options.timeout or 60 * 1000
-            if ok.messageCount > 0 and lag > timeout
-              @channel.get(type).then (message) ->
+            if @pending is 0 and ok.messageCount > 0
+              @channel.get(type).then (message) =>
                 if message 
                   @log.info {type}, 'Manually retrieved message, consuming'
                   @processJob message
                 else
                   @log.info {type}, 'No message retrieved despite count=' + ok.messageCount + '. Investigate.'
+
+            if @pending > 0
+              @log.error {type}, 'PENDINGCOUNT=' + @pending
+              if lag > timeout
+                @log.error {type}, 'CHANNELRECOVER'
+                @channel.recover()
         ), 1000
 
         # reconnect on close
@@ -105,13 +111,28 @@ module.exports = class Queue
     job.request body, options, cb
 
   processJob: (message) ->
+    @pending++
     job = new Job @options.type, @
     job.process message
-  
-  partFailure: (message) ->
-    @options.partFailure? message
-    @connection.partFailure? message
 
-  fullFailure: (message) ->
-    @options.fullFailure? message
-    @connection.fullFailure? message    
+  jobSuccess: (message) ->
+    @pending--
+    @lastComplete = Date.now()
+    @lastSuccess = Date.now()
+    @stats 'increment', @type, 'ok', 1
+    @options.jobSuccess? message
+    @connection.jobSuccess? message
+  
+  jobPartFailure: (message) ->
+    @pending--
+    @lastComplete = Date.now()
+    @stats 'increment', @type, 'part_fail', 1
+    @options.jobPartFailure? message
+    @connection.jobPartFailure? message
+
+  jobFullFailure: (message) ->
+    @pending--
+    @lastComplete = Date.now()
+    @stats 'increment', @type, 'full_fail', 1
+    @options.jobFullFailure? message
+    @connection.jobFullFailure? message
