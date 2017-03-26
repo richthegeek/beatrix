@@ -1,6 +1,6 @@
 {
   "name": "beatrix",
-  "version": "2.0.8",
+  "version": "2.0.9",
   "description": "Opinionated RabbitMQ implementation",
   "main": "index.js",
   "scripts": {

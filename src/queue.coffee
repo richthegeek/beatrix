@@ -47,11 +47,14 @@ module.exports = class Queue
           @channel.checkQueue(type).then (ok) =>
             # stats the number of messages and consumers every 30 seconds
             unless ++offset % 30
+              @stats 'increment', type, 'pending', @pending
               @stats 'increment', type, 'consumers', ok.consumerCount
               @stats 'increment', type, 'messages', ok.messageCount
 
             # manually jog the queue every second, perhaps
-            if ok.messageCount > @pending > concurrency
+            lag = Math.abs(Date.now() - @lastPublish)
+            timeout = (@options.timeout or 60000) * 2
+            if ok.messageCount > 0 and (@pending is 0 or lag > timeout)
               @log.info 'RECOVER'
               @channel.recover().then =>
                 @channel.get(type)
