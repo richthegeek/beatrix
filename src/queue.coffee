@@ -73,6 +73,7 @@ module.exports = class Queue
         setTimeout (=> @connect(cb)), 1000
 
   checkQueue: ->
+    type = @options.type
     @channel.checkQueue(type).then (ok) =>
       # stats the number of messages and consumers every 30 seconds
       @stats 'increment', type, 'pending', @pending
