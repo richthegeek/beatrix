@@ -42,29 +42,7 @@ module.exports = class Queue
         @channel.consume type, @processJob.bind(@)
       .then =>
         
-        offset = 0
-        timer = setInterval (=>
-          @channel.checkQueue(type).then (ok) =>
-            # stats the number of messages and consumers every 30 seconds
-            unless ++offset % 30
-              @stats 'increment', type, 'pending', @pending
-              @stats 'increment', type, 'consumers', ok.consumerCount
-              @stats 'increment', type, 'messages', ok.messageCount
-
-            # manually jog the queue every second, perhaps
-            lag = Math.abs(Date.now() - @lastPublish)
-            timeout = (@options.timeout or 60000) * 2
-            if ok.messageCount > 0 and (@pending is 0 or lag > timeout)
-              @log.info 'RECOVER'
-              @channel.recover().then =>
-                @channel.get(type)
-              .then (message) =>
-                if message 
-                  @log.info {type}, 'Manually retrieved message, consuming'
-                  @processJob message
-                else
-                  @log.info {type}, 'No message retrieved despite count=' + ok.messageCount + '. Investigate.'
-        ), 1000
+        timer = setInterval @checkQueue.bind(@), 15 * 1000
 
         # reconnect on close
         @channel.on 'close', =>
@@ -93,6 +71,28 @@ module.exports = class Queue
       .catch (err) =>
         @log.error {type}, "Could not connect queue", err.stack
         setTimeout (=> @connect(cb)), 1000
+
+  checkQueue: ->
+    @channel.checkQueue(type).then (ok) =>
+      # stats the number of messages and consumers every 30 seconds
+      @stats 'increment', type, 'pending', @pending
+      @stats 'increment', type, 'consumers', ok.consumerCount
+      @stats 'increment', type, 'messages', ok.messageCount
+
+      # manually jog the queue every second, perhaps
+      lag = Math.abs(Date.now() - @lastComplete)
+      timeout = (@options.timeout or 60000) * 2
+      if ok.messageCount > 0 and (@pending is 0 or lag > timeout)
+        @pending = 0
+        @channel.recover().then (outcome) =>
+          @log.info {type}, 'RECOVER', outcome
+          @channel.get(type)
+        .then (message) =>
+          if message 
+            @log.info {type}, 'Manually retrieved message, consuming'
+            @processJob message
+          else
+            @log.info {type}, 'No message retrieved despite count=' + ok.messageCount + '. Investigate.'
 
   publish: (body, options, cb) ->
     unless @connected

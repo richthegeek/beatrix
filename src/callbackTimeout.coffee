@@ -5,10 +5,10 @@ class TimeoutError extends Error
     @message = "timeout of #{timeout}ms exceeded"
 
 module.exports = (timeout, fn) ->
-    
   callback = (e, r) ->
     unless callback.called
       fn e, r
+      callback.called = true
       clearTimeout(callback.timer)
 
   if timeout
