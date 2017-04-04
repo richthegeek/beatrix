@@ -1,6 +1,7 @@
 _ = require 'lodash'
 Rabbit = require('amqplib')
 Timeout = require('./callbackTimeout')
+ExponentialBackoff = require('backoff-strategies').Exponential
 
 module.exports = class Job
 
@@ -22,6 +23,7 @@ module.exports = class Job
       maxAttempts: 1,
       initialDelay: 0,
       delay: 1000,
+      maxDelay: 86400 * 1000
     }
 
     unless options.messageId?
@@ -36,10 +38,14 @@ module.exports = class Job
     _.defaults options.headers, _.pick options, ['attempts', 'maxAttempts', 'delay']
 
     # set the delay
-    if options.headers.attempts > 0 and options.headers.delay
-      options.headers['x-delay'] = options.headers.delay * Math.pow(2, options.headers.attempts - 1)
-    else if options.initialDelay
-      options.headers['x-delay'] = options.initialDelay
+    backoff = new ExponentialBackoff {
+      minValue: options.initialDelay,
+      maxValue: options.maxDelay,
+      multiplier: options.delay,
+      zeroMeansZero: true
+    }
+
+    options.headers['x-delay'] = backoff.get(options.headers.attempts)
 
     return options
 
