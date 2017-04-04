@@ -114,24 +114,24 @@ module.exports = class Queue
     job = new Job @options.type, @
     job.process message
 
-  jobSuccess: (message) ->
+  jobSuccess: (message, result) ->
     @pending = Math.max(0, @pending - 1)
     @lastComplete = Date.now()
     @lastSuccess = Date.now()
     @stats 'increment', @options.type, 'ok', 1
-    @options.jobSuccess? message
-    @connection.jobSuccess? message
+    @options.jobSuccess? message, result
+    @connection.jobSuccess? message, result
   
-  jobPartFailure: (message) ->
+  jobPartFailure: (message, err, result) ->
     @pending = Math.max(0, @pending - 1)
     @lastComplete = Date.now()
     @stats 'increment', @options.type, 'part_fail', 1
-    @options.jobPartFailure? message
-    @connection.jobPartFailure? message
+    @options.jobPartFailure? message, err, result
+    @connection.jobPartFailure? message, err, result
 
-  jobFullFailure: (message) ->
+  jobFullFailure: (message, err, result) ->
     @pending = Math.max(0, @pending - 1)
     @lastComplete = Date.now()
     @stats 'increment', @options.type, 'full_fail', 1
-    @options.jobFullFailure? message
-    @connection.jobFullFailure? message
+    @options.jobFullFailure? message, err, result
+    @connection.jobFullFailure? message, err, result
