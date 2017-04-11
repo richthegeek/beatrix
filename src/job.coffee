@@ -1,4 +1,5 @@
 _ = require 'lodash'
+uuid = require('uuid')
 Rabbit = require('amqplib')
 Timeout = require('./callbackTimeout')
 ExponentialBackoff = require('backoff-strategies').Exponential
@@ -70,7 +71,7 @@ module.exports = class Job
     options = _.defaults {}, options, {
       replyTimeout: 5000,
       replyTo: @connection.responseQueue,
-      correlationId: Date.now().toString()
+      correlationId: uuid.v4()
     }
 
     @connection.addRequestCallback options, cb

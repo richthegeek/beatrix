@@ -1,7 +1,9 @@
 _ = require('lodash')
 os = require('os')
+uuid = require('uuid')
 Rabbit = require('amqplib')
 Queue = require('./queue')
+Job = require('./job')
 Timeout = require('./callbackTimeout')
 
 module.exports = class Connection
@@ -42,8 +44,22 @@ module.exports = class Connection
         stack: []
       }
 
-  reply: (id, err, res) ->
+  send: (method, routingKey, body, options, cb) ->
+    if @queues[routingKey]
+      return @queues[routingKey][method] body, options, cb
 
+    job = new Job routingKey, {
+      options: {name: routingKey}
+      channel: @channel,
+      connection: @
+    }
+    job[method] body, {messageId: body.id ? uuid.v4()}, cb
+
+  publish: (routingKey, body, options, cb) ->
+    @send 'publish', routingKey, body, options, cb
+
+  request: (routingKey, body, options, cb) ->
+      @send 'request', routingKey, body, options, cb
 
   connect: (cb) ->
     return Rabbit.connect(@options.connection.uri, {heartbeat: 5})

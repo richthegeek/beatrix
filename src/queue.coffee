@@ -25,15 +25,15 @@ module.exports = class Queue
     @pending = 0
 
   connect: (cb) ->
-    {name, type, concurrency} = @options
+    {name, type, concurrency, routingKey} = @options
     
     try @channel?.close?().catch (err) => null
     
     return @connection.connection.createChannel()
       .then (@channel) =>
-        @channel.assertQueue type, _.omit @options, ['name', 'type', 'concurrency']
+        @channel.assertQueue type, _.omit @options, ['name', 'type', 'routingKey', 'concurrency']
       .then =>
-        @channel.bindQueue(type, @connection.exchange.name, type)
+        @channel.bindQueue(type, @connection.exchange.name, routingKey ? type)
       .then =>
         @channel.recover()
       .then =>

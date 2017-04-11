@@ -1,6 +1,6 @@
 {
   "name": "beatrix",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Opinionated RabbitMQ implementation",
   "main": "index.js",
   "scripts": {
@@ -26,7 +26,8 @@
   "dependencies": {
     "amqplib": "^0.5.1",
     "backoff-strategies": "^1.0.1",
-    "lodash": "^4.17.4"
+    "lodash": "^4.17.4",
+    "uuid": "^3.0.1"
   },
   "devDependencies": {
     "coffee-script": "^1.12.1",
