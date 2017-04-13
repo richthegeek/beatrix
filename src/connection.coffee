@@ -45,6 +45,9 @@ module.exports = class Connection
       }
 
   send: (method, routingKey, body, options, cb) ->
+    options.messageId ?= body.id ? uuid.v4()
+    options.routingKey ?= routingKey
+
     if @queues[routingKey]
       return @queues[routingKey][method] body, options, cb
 
@@ -53,7 +56,7 @@ module.exports = class Connection
       channel: @channel,
       connection: @
     }
-    job[method] body, {messageId: body.id ? uuid.v4()}, cb
+    job[method] body, options, cb
 
   publish: (routingKey, body, options, cb) ->
     @send 'publish', routingKey, body, options, cb

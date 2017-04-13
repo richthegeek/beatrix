@@ -31,8 +31,8 @@ module.exports = class Job
       options.messageId = @queue.options.name + '.' + (++@queue.options.id)
 
     options.timestamp = Date.now()
-
-    options.routingKey = options.type = @type
+  
+    options.routingKey ?= options.type 
     delete options.timeout # this is an option for Rabbot, delete it to prevent issues
 
     # copy things over to the headers
@@ -60,7 +60,7 @@ module.exports = class Job
     @log.info {type: @type, id: options.messageId, request: options.replyTo?}, 'Publishing job to queue', body
 
     body = new Buffer JSON.stringify body
-    result = @channel.publish(@connection.exchange.name, @type, body, options)
+    result = @channel.publish(@connection.exchange.name, options.routingKey, body, options)
 
     if result
       return cb? null, 'OK'
