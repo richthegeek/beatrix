@@ -53,9 +53,8 @@ module.exports = class Job
   publish: (body, options, cb) ->
     options = @mergePublishOptions options
 
-    unless options.headers.attempts < options.headers.maxAttempts
-      @log.info {type: @type}, "Rejecting publish due to too many attempts: #{options.headers.attempts} >= #{options.headers.maxAttempts}"
-      return false
+    unless options.headers.attempts <= options.headers.maxAttempts
+      return cb? "Rejecting publish due to too many attempts: #{options.headers.attempts} >= #{options.headers.maxAttempts}"
 
     @log.info {type: @type, id: options.messageId, request: options.replyTo?}, 'Publishing job to queue', body
 

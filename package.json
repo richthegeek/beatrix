@@ -4,8 +4,8 @@
   "description": "Opinionated RabbitMQ implementation",
   "main": "index.js",
   "scripts": {
-    "build": "./node_modules/.bin/coffee -cmo lib src",
-    "dev:build": "./node_modules/.bin/coffee -cmo lib -w src",
+    "build": "./node_modules/.bin/coffee --no-header -cmo lib src",
+    "dev:build": "./node_modules/.bin/coffee --no-header -cmo lib -w src",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
