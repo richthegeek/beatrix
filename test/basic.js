@@ -10,9 +10,9 @@ describe('Beatrix basic ', () => {
     assert(_.has(connection, 'queues.testcore'), 'Connection did not have the testcore queue');
     return connection.queues.testcore.status(true).then((result) => {
       assert.equal(result.connected, true, 'Queue.status(wait=true) response did not have connected=true');
-      assert.equal(result.pending, 0, 'Queue.status(wait=true) response did not have pending=0');
-      assert.equal(result.consumerCount, 0, 'Queue.status(wait=true) response did not have consumerCount=0');
-      assert.equal(result.messageCount, 0, 'Queue.status(wait=true) response did not have messageCount=0');
+      assert.equal(result.pendingCount, 0, 'Queue.status(wait=true) response did not have pendingCount=0');
+      assert(_.isNumber(result.consumerCount), 'Queue.status(wait=true) response did not have numeric consumerCount');
+      assert(_.isNumber(result.messageCount), 'Queue.status(wait=true) response did not have numeric messageCount');
     });
   });
 
@@ -25,9 +25,9 @@ describe('Beatrix basic ', () => {
     })
 
     return queue.status(true).then(() => {
-      return queue.channel._channel.checkQueue('beatrix.' + name)
+      return queue.channel._channel.checkQueue('testing.' + name)
     }).then(() => {
-      return queue.channel._channel.deleteQueue('beatrix.' + name)
+      return queue.channel._channel.deleteQueue('testing.' + name)
     });
   });
 

@@ -31,6 +31,7 @@ module.exports = class Connection extends Emitter {
       },
       responseQueue: {
         name: [os.hostname(), this.name, process.pid, 'responseQueue'].join('.'),
+        fullName: [os.hostname(), this.name, process.pid, 'responseQueue'].join('.'),
         routingKey: [os.hostname(), this.name, process.pid, 'responseQueue'].join('.'),
         autoDelete: true,
         exclusive: true,

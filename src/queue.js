@@ -23,7 +23,7 @@ module.exports = class Queue extends Emitter {
     this.channel = connection.createChannel();
     this.channel.addSetup(this.setup.bind(this));
 
-    this.channel.on('connect', this.emit.bind(this, 'connect'));
+    this.channel.on('connect', () => this.emit('connect', this));
     this.channel.on('close', this.emit.bind(this, 'close'));
     this.channel.on('error', this.emit.bind(this, 'error'));
     this.channel.on('drop', this.emit.bind(this, 'drop'));
@@ -80,8 +80,15 @@ module.exports = class Queue extends Emitter {
     return this.channel.close();
   }
 
+
+  purge () {
+    console.log('purging', this.options.fullName);
+    return this.channel._channel.purgeQueue(this.options.fullName);
+  }
+
   delete () {
-    return this.channel._channel.deleteQueue(this.name);
+    console.log('deleting', this.options.fullName);
+    return this.channel._channel.deleteQueue(this.options.fullName);
   }
 
   status (wait) {
@@ -101,11 +108,11 @@ module.exports = class Queue extends Emitter {
       this.stats('increment', type, 'pending', this.pending);
       this.stats('increment', type, 'consumers', ok.consumerCount);
       this.stats('increment', type, 'messages', ok.messageCount);
-      this.emit('check', this.pending, ok.consumerCount, ok.messageCount);
+      this.emit('check', {pendingCount: this.pending, consumerCount: ok.consumerCount, messageCount: ok.messageCount});
 
       return {
         connected: this.connected,
-        pending: this.pending,
+        pendingCount: this.pending,
         consumerCount: ok.consumerCount,
         messageCount: ok.messageCount
       };
@@ -142,6 +149,10 @@ module.exports = class Queue extends Emitter {
   }
 
   processJob (message) {
+    if (!message) {
+      this.log.warn({queue: this.name}, 'Empty job received');
+      return;
+    }
     this.pending++;
     var job = new Job(this.name, this);
     job.process(message);

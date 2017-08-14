@@ -20,11 +20,11 @@ before((done) => {
 });
 
 after(() => {
-  return Promise.all([_.map(global.connection.queues, (q) => {
+  return Promise.all(_.map(global.connection.queues, (q) => {
     return q.delete();
-  })].concat([
+  }).concat([
     global.connection.createChannel((channel) => {
       return channel.deleteExchange('testing');
     })
-  ]));
+  ])).catch((err) => { return null });
 });
