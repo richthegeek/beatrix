@@ -26,7 +26,7 @@ Beatrix.createQueue('echo', {
 Beatrix.publish('echo', {text: 'hello'});
 
 Beatrix.request('echo', {text: 'test'}).then((result) => {
-  // result = "testtest"
+  // result = "test"
 });
 ```
 
@@ -99,12 +99,12 @@ Beatrix.request('echo', {text: 'test'}).then((result) => {
 
 ## Job
 ### options
-`maxAttempts` (default: 1) - how many times should this job be retried before failing?
-`timeout` (default: null) - how long in ms should we allow the processor to take before rejecting with a TimeoutError and potentially retrying?
-`replyTimeout` (default: 5000) - how long should the requester wait before rejecting with a TimeoutError? Note, the job may successfully resolve after this.
-`initialDelay` (default: 0) - should the first attempt be delayed?
-`delay` (default: 1000) - how many milliseconds should we delay between attempts?
-`delayStrategy` (default: Exponential) - see [backoff-strategies](https://github.com/richthegeek/node-backoff-strategies) for available strategies.
-`maxDelay` (default: 86400000 (1 day)) - what is the longest between attempts, overriding any other delay results?
+* `maxAttempts` (default: 1) - how many times should this job be retried before failing?
+* `timeout` (default: null) - how long in ms should we allow the processor to take before rejecting with a TimeoutError and potentially retrying?
+* `replyTimeout` (default: 5000) - how long should the requester wait before rejecting with a TimeoutError? Note, the job may successfully resolve after this.
+* `initialDelay` (default: 0) - should the first attempt be delayed?
+* `delay` (default: 1000) - how many milliseconds should we delay between attempts?
+* `delayStrategy` (default: Exponential) - see [backoff-strategies](https://github.com/richthegeek/node-backoff-strategies) for available strategies.
+* `maxDelay` (default: 86400000 (1 day)) - what is the longest between attempts, overriding any other delay results?
 
-A note on delays: by default it's Exponential at 1 second, so doubling every attempt: 1s, 2s, 4s, etc... So the 5 attempts will occur at least 31 seconds after publishing. Tuning the maxAttempts/delay/maxDelay properties is something you should probably spend a lot of time on. And delays won't work at all if you don't use the x-delayed-message plugin!
+>**A note on delays**: by default it's Exponential at 1 second, so doubling every attempt: 1s, 2s, 4s, etc... So the 5 attempts will occur at least 31 seconds after publishing. Tuning the maxAttempts/delay/maxDelay properties is something you should probably spend a lot of time on. And delays won't work at all if you don't use the x-delayed-message plugin!
