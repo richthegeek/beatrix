@@ -1,3 +1,5 @@
+'use strict';
+
 var amqp = require('amqp-connection-manager');
 
 var _ = require('lodash');

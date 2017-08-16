@@ -1,3 +1,5 @@
+'use strict';
+
 var _ = require('lodash');
 var Job = require('./job');
 var Emitter = require('eventemitter2').EventEmitter2;
@@ -52,15 +54,14 @@ module.exports = class Queue extends Emitter {
   }
 
   setup (channel) {
-    var {concurrency, routingKey} = this.options;
     var queueOptions = _.omit(this.options, ['concurrency', 'routingKey']);
 
     var process = 'function' === typeof this.options.process;
 
     var promise = Promise.all([
       channel.assertQueue(this.options.fullName, queueOptions),
-      channel.bindQueue(this.options.fullName, this.connection.exchange.name, routingKey),
-      process ? channel.prefetch(concurrency) : Promise.resolve(0),
+      channel.bindQueue(this.options.fullName, this.connection.exchange.name, this.options.routingKey),
+      process ? channel.prefetch(this.options.concurrency) : Promise.resolve(0),
       process ? channel.consume(this.options.fullName, this.processJob.bind(this)) : Promise.resolve(0)
     ]);
 
@@ -163,17 +164,20 @@ module.exports = class Queue extends Emitter {
     this.lastComplete = Date.now();
     this.lastSuccess = Date.now();
     this.stats('increment', this.name, 'ok', 1);
+    this.options.onSuccess && this.options.onSuccess(message, result);
   }
 
   onPartFailure (message, err, result) {
     this.pending = Math.max(0, this.pending - 1);
     this.lastComplete = Date.now();
     this.stats('increment', this.name, 'part_fail', 1);
+    this.options.onPartFailure && this.options.onPartFailure(message, err, result);
   }
 
   onFullFailure (message, err, result) {
     this.pending = Math.max(0, this.pending - 1);
     this.lastComplete = Date.now();
     this.stats('increment', this.name, 'part_fail', 1);
+    this.options.onFullFailure && this.options.onFullFailure(message, err, result);
   }
 }

@@ -1,3 +1,5 @@
+'use strict';
+
 class TimeoutError extends Error {
   constructor (timeout) {
     super()

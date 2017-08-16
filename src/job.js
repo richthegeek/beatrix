@@ -1,3 +1,5 @@
+'use strict';
+
 var _ = require('lodash');
 var uuid = require('uuid');
 var Backoff = require('backoff-strategies');
@@ -29,7 +31,7 @@ module.exports = class Job {
     });
 
     // default here to prevent missing ids
-    options.messageId = options.messageId || this.queue.options.name + '.' + (++this.queue.options.id);
+    options.messageId = options.messageId || this.queue.name + '.' + (++this.queue.options.id);
 
     options.timestamp = Date.now()
 
