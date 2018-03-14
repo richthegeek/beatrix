@@ -19,6 +19,7 @@ const Beatrix = require('beatrix')({
 
 Beatrix.createQueue('echo', {
   process: function (message) {
+    message.log('Got a message to echo!', message.body.text);
     message.resolve(message.body.text);
   }
 });
@@ -98,7 +99,7 @@ Beatrix.request('echo', {text: 'test'}).then((result) => {
 * `fullFailure -> {message, error}` - emitted when a Job fails and will not be retried
 
 ## Job
-### options
+### Publishing options
 * `maxAttempts` (default: 1) - how many times should this job be retried before failing?
 * `timeout` (default: null) - how long in ms should we allow the processor to take before rejecting with a TimeoutError and potentially retrying?
 * `replyTimeout` (default: 5000) - how long should the requester wait before rejecting with a TimeoutError? Note, the job may successfully resolve after this.
@@ -106,5 +107,7 @@ Beatrix.request('echo', {text: 'test'}).then((result) => {
 * `delay` (default: 1000) - how many milliseconds should we delay between attempts?
 * `delayStrategy` (default: Exponential) - see [backoff-strategies](https://github.com/richthegeek/node-backoff-strategies) for available strategies.
 * `maxDelay` (default: 86400000 (1 day)) - what is the longest between attempts, overriding any other delay results?
+* `bunyan` (default: null) - if passed a Bunyan instance, will attempt to copy over fields to message.log logger
+* `exchange` (default: parent) - will override the exchange the job is being published to from the connection default
 
 >**A note on delays**: by default it's Exponential at 1 second, so doubling every attempt: 1s, 2s, 4s, etc... So the 5 attempts will occur at least 31 seconds after publishing. Tuning the maxAttempts/delay/maxDelay properties is something you should probably spend a lot of time on. And delays won't work at all if you don't use the x-delayed-message plugin!

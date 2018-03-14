@@ -19,6 +19,7 @@ module.exports = class Job {
 
   mergePublishOptions (options) {
     options = _.defaultsDeep({}, options, this.queue.options, {
+      exchange: this.connection.exchange.name,
       contentType: 'application/json',
       publishedAt: Date.now(),
       headers: {},
@@ -45,6 +46,11 @@ module.exports = class Job {
     let delay = this.getDelay(options.headers.attempts, options);
     if (delay) {
       options.headers['x-delay'] = delay;
+    }
+
+    // copy over bunyan fields into headers
+    if (_.has(options, 'bunyan')) {
+      options.headers.bunyan = _.omit(options.bunyan.fields, ['name', 'hostname', 'pid'])
     }
 
     return options
@@ -89,9 +95,7 @@ module.exports = class Job {
       return Promise.reject("Rejecting publish due to too many attempts: ${options.headers.attempts} >= ${options.headers.maxAttempts}");
     }
 
-
-    // bodyBuffer = new Buffer JSON.stringify body
-    var promise = this.channel.publish(this.connection.exchange.name, options.routingKey, body, options);
+    var promise = this.channel.publish(options.exchange, options.routingKey, body, options);
 
     promise.then((a,b) => {
       this.queue.emit('publish', _.extend({}, options, {body})); // should set lastPublish time
@@ -125,10 +129,16 @@ module.exports = class Job {
 
     this.stats('timing', this.type, 'startDelay', Date.now() - props.timestamp);
 
+    // support for bunyan child
+    message.log = this.log;
+    if (_.has(headers, 'bunyan') && message.log.child) {
+      message.log = message.log.child(headers.bunyan);
+    }
+
     message.finished = false
     message.finish = (err, result, final) => {
       if (message.finished) {
-        return this.log.fatal(this.processLogMeta(message), 'Job was already acked/nacked');
+        return message.log.fatal(this.processLogMeta(message), 'Job was already acked/nacked');
       }
 
       message.finished = true;
@@ -136,10 +146,10 @@ module.exports = class Job {
 
       var body = {err, result, final};
       if (props.correlationId && props.replyTo && (final || !err)) {
-        this.log.info(this.processLogMeta(message), 'Replying', body);
+        message.log.info(this.processLogMeta(message), 'Replying', body);
         this.channel.sendToQueue(props.replyTo, body, {correlationId: props.correlationId})
       } else {
-        this.log.info(this.processLogMeta(message), 'Acking', body);
+        message.log.info(this.processLogMeta(message), 'Acking', body);
       }
     }
 
@@ -158,7 +168,7 @@ module.exports = class Job {
     message.firstAttempt = message.attempt === 1;
     message.lastAttempt = (headers.attempts >= headers.maxAttempts);
 
-    this.log.info(this.processLogMeta(message, {timeout: headers.timeout}), 'Starting');
+    message.log.info(this.processLogMeta(message, {timeout: headers.timeout}), 'Starting');
 
     new TimeoutPromise(headers.timeout, (resolve, reject) => {
       message.reject = reject;
