@@ -81,14 +81,11 @@ module.exports = class Queue extends Emitter {
     return this.channel.close();
   }
 
-
   purge () {
-    console.log('purging', this.options.fullName);
     return this.channel._channel.purgeQueue(this.options.fullName);
   }
 
   delete () {
-    console.log('deleting', this.options.fullName);
     return this.channel._channel.deleteQueue(this.options.fullName);
   }
 

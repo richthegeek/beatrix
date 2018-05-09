@@ -99,9 +99,9 @@ module.exports = class Job {
 
     promise.then((a,b) => {
       this.queue.emit('publish', _.extend({}, options, {body})); // should set lastPublish time
-      this.log.info({queue: this.type, id: options.messageId, request: !! options.replyTo}, 'Published job to queue', body);
-    }).catch((err) => {
-      this.log.error({queue: this.type, id: options.messageId, request: !! options.replyTo, err: err}, 'Could not publish job!', body);
+      this.log.info({queue: this.type, id: options.messageId, request: !! options.replyTo, exchange: options.exchange, routingKey: options.routingKey}, 'Published job to queue', body);
+    }, (err) => {
+      this.log.error({queue: this.type, id: options.messageId, request: !! options.replyTo, exchange: options.exchange, routingKey: options.routingKey, err: err}, 'Could not publish job!', body);
     });
 
     return promise;

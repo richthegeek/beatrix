@@ -4,6 +4,7 @@ var amqp = require('amqp-connection-manager');
 
 var _ = require('lodash');
 var os = require('os');
+var url = require('url');
 var uuid = require('uuid');
 var Emitter = require('eventemitter2').EventEmitter2;
 
@@ -78,9 +79,11 @@ module.exports = class Connection extends Emitter {
   connect () {
     if (!this.amqp) {
       this.amqp = amqp.connect(_.castArray(this.options.uri));
-      this.amqp.on('connect', () => {
+      this.amqp.on('connect', (connection) => {
+        let u = url.parse(connection.url);
+        u.auth = u.auth.replace(/\:(.+)/, (s) => ':' + _.pad('', s.length, '*'))
         this.emit('connect', this);
-        this.log.info('RabbitMQ Connected');
+        this.log.info('RabbitMQ Connected to ', url.format(u));
       });
       this.amqp.on('disconnect', (err) => {
         this.emit('disconnect', err);
@@ -101,7 +104,6 @@ module.exports = class Connection extends Emitter {
     options = _.defaults(options, {
       messageId: body.id || uuid.v4()
     });
-
     if (routingKey in this.queues) {
       return this.queues[routingKey][method](body, options);
     }
