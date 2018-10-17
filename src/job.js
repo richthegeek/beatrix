@@ -95,6 +95,29 @@ module.exports = class Job {
       return Promise.reject("Rejecting publish due to too many attempts: ${options.headers.attempts} >= ${options.headers.maxAttempts}");
     }
 
+    /*
+      This codeblock allows the queue to instantly run a job in this process
+       if the process does not have a pending queue larger than the defined concurrency.
+      It uses the new Promise + process.nextTick pattern to avoid zalgo, maybe this is unrequired.
+      The pending++ and pending-- is to prevents jobs processed in the next tick not being counted.
+      It assumes that the local process is capable of processing the job.
+    */
+    if (options.bypass && options.concurrency > this.queue.pending) {
+      options.bypassed = true;
+      this.queue.pending++
+      return new Promise((resolve, reject) => {
+        process.nextTick(() => {
+          this.queue.pending--
+          this.log.info({queue: this.type, id: options.messageId, request: !! options.replyTo, exchange: options.exchange, routingKey: options.routingKey}, 'Immediately ran job in queue', body);
+          this.queue.processJob({
+            fields: {},
+            properties: options,
+            content: new Buffer(JSON.stringify(body))
+          }).then(resolve, reject)
+        })
+      })
+    }
+
     var promise = this.channel.publish(options.exchange, options.routingKey, body, options);
 
     promise.then((a,b) => {
@@ -141,13 +164,21 @@ module.exports = class Job {
         return message.log.fatal(this.processLogMeta(message), 'Job was already acked/nacked');
       }
 
+      var reply = props.correlationId && props.replyTo && (final || !err);
+
       message.finished = true;
-      this.channel.ack(message);
+      if (!props.bypassed) {
+        this.channel.ack(message);
+      }
 
       var body = {err, result, final};
-      if (props.correlationId && props.replyTo && (final || !err)) {
+      if (reply) {
         message.log.info(this.processLogMeta(message), 'Replying', body);
-        this.channel.sendToQueue(props.replyTo, body, {correlationId: props.correlationId})
+        if (props.bypassed) {
+          this.connection.handleRequestCallback(props.correlationId, body);
+        } else {
+          this.channel.sendToQueue(props.replyTo, body, {correlationId: props.correlationId})
+        }
       } else {
         message.log.info(this.processLogMeta(message), 'Acking', body);
       }
@@ -170,7 +201,7 @@ module.exports = class Job {
 
     message.log.info(this.processLogMeta(message, {timeout: headers.timeout}), 'Starting');
 
-    new TimeoutPromise(headers.timeout, (resolve, reject) => {
+    return new TimeoutPromise(headers.timeout, (resolve, reject) => {
       message.reject = reject;
       message.resolve = resolve;
       this.queue.options.process(message);

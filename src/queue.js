@@ -18,7 +18,8 @@ module.exports = class Queue extends Emitter {
       concurrency: 1,
       id: 0,
       durable: true,
-      autoDelete: false
+      autoDelete: false,
+      bypass: false
     });
 
 
@@ -46,7 +47,7 @@ module.exports = class Queue extends Emitter {
     this.lastSuccess = 0;
     this.pending = 0;
 
-    this.on('sucess', this.onSuccess.bind(this));
+    this.on('success', this.onSuccess.bind(this));
     this.on('partFailure', this.onPartFailure.bind(this));
     this.on('fullFailure', this.onFullFailure.bind(this));
 
@@ -153,7 +154,7 @@ module.exports = class Queue extends Emitter {
     }
     this.pending++;
     var job = new Job(this.name, this);
-    job.process(message);
+    return job.process(message);
   }
 
   onSuccess (message, result) {

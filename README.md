@@ -76,6 +76,7 @@ Beatrix.request('echo', {text: 'test'}).then((result) => {
 * `concurrency`: passed through as `prefetch`, essentially the max concurrent jobs on this Queue.
 * `id`: initial incremented ID for messages if they dont have IDs on the body.
 * `durable` and `autoDelete` as well as other normal AMQP Queue options can be added here.
+* `bypass`: (default: false) if true and the local process has less running jobs than the Queue concurrency, then the job will be instantly run locally rather than publishing into RabbitMQ and then being retrieved.
 
 ### methods
 * `on/once(event, callback)`: standard EventEmitter2 method

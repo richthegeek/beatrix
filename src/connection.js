@@ -33,6 +33,7 @@ module.exports = class Connection extends Emitter {
         }
       },
       responseQueue: {
+        enabled: true,
         name: [os.hostname(), this.name, process.pid, 'responseQueue'].join('.'),
         fullName: [os.hostname(), this.name, process.pid, 'responseQueue'].join('.'),
         routingKey: [os.hostname(), this.name, process.pid, 'responseQueue'].join('.'),
@@ -96,6 +97,10 @@ module.exports = class Connection extends Emitter {
         }
         this.createQueue(name, opts);
       });
+
+      if (this.options.responseQueue && this.options.responseQueue.enabled !== false) {
+        this.createResponseQueue();
+      }
     }
     return this;
   }
@@ -163,15 +168,17 @@ module.exports = class Connection extends Emitter {
     this.responseQueue = new Queue(this.options.responseQueue.name, this.options.responseQueue, this);
     this.responseQueue.processJob = (message) => {
       this.responseQueue.channel.ack(message);
-
-      var body = JSON.parse(message.content);
-      var fn = _.get(this.pendingResponses, message.properties.correlationId);
-      if (fn) {
-        fn(body.err, body.result);
-      }
+      this.handleRequestCallback(message.properties.correlationId, JSON.parse(message.content));
     }
 
     return this.responseQueue;
+  }
+
+  handleRequestCallback (id, body) {
+    var fn = _.get(this.pendingResponses, id);
+    if (fn) {
+      fn(body.err, body.result);
+    }    
   }
 
   addRequestCallback (options) {
