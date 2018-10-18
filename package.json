@@ -1,6 +1,6 @@
 {
   "name": "beatrix",
-  "version": "3.2.1",
+  "version": "3.2.2",
   "description": "Opinionated RabbitMQ implementation",
   "main": "index.js",
   "scripts": {
@@ -22,12 +22,12 @@
   },
   "homepage": "https://github.com/richthegeek/beatrix#readme",
   "dependencies": {
-    "amqp-connection-manager": "^2.0.0",
+    "amqp-connection-manager": "^2.2.0",
     "amqplib": "^0.5.2",
     "backoff-strategies": "^1.1.0",
     "eventemitter2": "^4.1.2",
-    "lodash": "^4.17.10",
-    "uuid": "^3.2.1"
+    "lodash": "^4.17.11",
+    "uuid": "^3.3.2"
   },
   "devDependencies": {
     "mocha": "^3.5.3"
