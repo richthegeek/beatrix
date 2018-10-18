@@ -139,6 +139,13 @@ module.exports = class Connection extends Emitter {
     return this.send('request', routingKey, body, options);
   }
 
+  assertQueue (name, options) {
+    if (_.has(this.queues, name)) {
+      return this.queues[name];
+    }
+    return this.createQueue(name, options);
+  }
+
   createQueue (name, options) {
     if (!this.amqp) {
       throw new Error('BeatrixConnection.createQueue called before BeatrixConnection.connect');

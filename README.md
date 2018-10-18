@@ -56,6 +56,7 @@ Beatrix.request('echo', {text: 'test'}).then((result) => {
 * `close() -> Promise(boolean[])`: attempts to close all channels and connections.
 * `createChannel() -> Promise(channel)`: creates a new channel and asserts the exchange.
 * `createQueue(name, options) -> Queue`: creates a new Queue on this exchange. See "Queue options".
+* `assertQueue(name, options) -> Queue`: Idempotent version of createQueue.
 * `send(method, routingKey, body, options) -> Promise(result)`: creates a new job and publishes it to the server when possible. Result type depends on method.
 * `publish(routingKey, body, options) -> Promise(true)`: creates a new job and publishes it to the queue, resolving once received by the server.
 * `request(routingKey, body, options) -> Promise(result)`: creates a new job and awaits the result from the processor before resolving.
@@ -69,6 +70,7 @@ Beatrix.request('echo', {text: 'test'}).then((result) => {
 
 ## Queue
 `Connection.createQueue(name, options) -> Queue`
+`Connection.assertQueue(name, options) -> Queue`
 ### options
 * `name` : name for logging and used as the routingKey unless overridden
 * `fullName`: name of the queue within RabbitMQ, defaults to connection name + queue name
