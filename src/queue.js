@@ -8,20 +8,19 @@ module.exports = class Queue extends Emitter {
 
   constructor (name, options, connection) {
     super();
-    this.name = name;
+    this.name = _.get(options, 'name', name);
     this.connection = connection;
     this.log = connection.log;
     this.stats = connection.stats;
     this.options = _.defaultsDeep(options, {
-      fullName: connection.name + '.' + name,
-      routingKey: name,
+      fullName: connection.name + '.' + this.name,
+      routingKey: this.name,
       concurrency: 1,
       id: 0,
       durable: true,
       autoDelete: false,
       bypass: false
     });
-
 
     this.channel = connection.createChannel();
     this.channel.addSetup(this.setup.bind(this));
