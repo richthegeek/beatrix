@@ -6,6 +6,7 @@ var _ = require('lodash');
 var os = require('os');
 var url = require('url');
 var uuid = require('uuid');
+var debug = require('debug')('beatrix');
 var Emitter = require('eventemitter2').EventEmitter2;
 
 var Queue = require('./queue');
@@ -20,6 +21,7 @@ module.exports = class Connection extends Emitter {
     this.name = _.get(options, 'name', 'beatrix');
 
     this.options = _.defaultsDeep(options, {
+      debug: false,
       log: new console.Console(process.stdout, process.stderr),
       stats: (type, queue, stat, value) => {},
       uri: 'amqp://guest:guest@localhost/',
@@ -47,6 +49,15 @@ module.exports = class Connection extends Emitter {
       }
     });
 
+    const self = this; // annoying, need arguments and `this` here
+    this.options.log.trace = this.options.debug ? _.wrap(this.options.log.trace, function (trace) {
+      let args = _.tail(arguments);
+      trace.apply(self.options.log, args);
+      debug.apply(null, args);
+    }) : _.noop;
+
+    this.options.log.trace('Connection.constructor starting with options', _.omit(this.options, ['log', 'stats', 'onUnhandled']))
+
     // for children to link to
     this.exchange = this.options.exchange;
     this.log = this.options.log;
@@ -54,6 +65,29 @@ module.exports = class Connection extends Emitter {
     this.onUnhandled = this.options.onUnhandled;
     this.queues = {};
     this.pendingResponses = {};
+
+    this.on('connect', () => {
+      this.log.info('RabbitMQ Connected', this.connection.url.replace(/\/\/(.+?)\:(.+?)@/, (a, user, pass) => {
+        return '//' + user + ':' + _.pad('', pass.length, '*') + '@'
+      }));
+    });
+
+    this.on('disconnect', (err) => {
+      this.log.warn('RabbitMQ Disconnected', err);
+    });
+
+    this.onAny((event, value) => {
+      if (_.has(value, 'message.properties.messageId')) {
+        value = '[Job: ' + value.message.properties.messageId + ']'
+      } else if (_.has(value, 'messageId')) {
+        value = '[Job: ' + value.messageId + ']'        
+      } else if (value instanceof Queue) {
+        value = '[Queue: ' + value.name + ']'
+      } else if (value instanceof Connection) {
+        value = '[Connection: ' + value.name + ']'
+      }
+      this.log.trace('Connection{' + event + '} triggered', value);
+    })
   }
 
   isConnected () {
@@ -61,46 +95,63 @@ module.exports = class Connection extends Emitter {
   }
 
   close () {
+    this.log.trace('Connection.close() called')
     return Promise.all([
       this.amqp.close(),
     ].concat(_.map(this.queues, (q) => {
       return q.close();
-    })));
+    }))).then(() => {
+      this.log.trace('Connection.close() closed all queues')
+    }, (err) => {
+      this.log.trace('Connectionc.close() produced an error', err);
+      return err
+    })
   }
 
-  createChannel () {
+  createChannel (name) {
+    this.log.trace('Connection.createChannel(' + (name ? name : '') + ')', )
     return this.amqp.createChannel({
+      name: name,
       json: true,
       setup: (channel) => {
-        return channel.assertExchange(this.exchange.name, this.exchange.type, _.omit(this.exchange, 'name', 'type'));
+        this.log.trace('Connection.createChannel() setup callback called, calling channel.assertExchange')
+        return channel.assertExchange(this.exchange.name, this.exchange.type, _.omit(this.exchange, 'name', 'type')).then((result) => {
+          this.log.trace('channel.assertExchange ok', result)
+        }, (err) => {
+          this.log.trace('channel.assertExchange produced an error', err);
+          return err
+        })
       }
     });
   }
 
   connect () {
-    if (!this.amqp) {
-      this.amqp = amqp.connect(_.castArray(this.options.uri));
-      this.amqp.on('connect', (connection) => {
-        let u = url.parse(connection.url);
-        u.auth = u.auth.replace(/\:(.+)/, (s) => ':' + _.pad('', s.length, '*'))
-        this.emit('connect', this);
-        this.log.info('RabbitMQ Connected to ', url.format(u));
-      });
-      this.amqp.on('disconnect', (err) => {
-        this.emit('disconnect', err);
-        this.log.warn('RabbitMQ Disconnected', err)
-      });
+    if (this.amqp) {
+      this.log.trace('Connection.connect() called, but already connected');
+      return this;
+    }
 
-      _.each(this.options.queues, (opts, name) => {
-        if (opts.enabled === false) {
-          return;
-        }
-        this.createQueue(name, opts);
-      });
+    this.amqp = amqp.connect(_.castArray(this.options.uri));
+    this.amqp.on('connect', (connection) => {
+      this.connection = connection;
+      this.emit('connect', this);
+    });
+    this.amqp.on('disconnect', (err) => {
+      this.emit('disconnect', err);
+    });
 
-      if (this.options.responseQueue && this.options.responseQueue.enabled !== false) {
-        this.createResponseQueue();
+    _.each(this.options.queues, (opts, name) => {
+      if (opts.enabled === false) {
+        this.log.trace('Skipping disabled queue from constructor options', name)
+        return;
       }
+      this.log.trace('Creating queue from constructor options', name);
+      this.createQueue(name, opts);
+    });
+
+    if (this.options.responseQueue && this.options.responseQueue.enabled !== false) {
+      this.log.trace('Creating responseQueue because this.options.responseQueue is enabled');
+      this.createResponseQueue();
     }
     return this;
   }
@@ -109,13 +160,16 @@ module.exports = class Connection extends Emitter {
     options = _.defaults(options, {
       messageId: body.id || uuid.v4()
     });
+
+    this.log.trace('Connection.send() called', {method, routingKey, body, options: _.omit(options, 'bunyan')})
+
     if (routingKey in this.queues) {
       return this.queues[routingKey][method](body, options);
     }
 
     let channel = this.responseQueue ? this.responseQueue.channel : this.channel;
     if (!channel) {
-      this.channel = channel = this.createChannel();
+      this.channel = channel = this.createChannel('connection');
     }
 
     var job = new Job(routingKey, _.extend(new Emitter, {
@@ -141,8 +195,10 @@ module.exports = class Connection extends Emitter {
 
   assertQueue (name, options) {
     if (_.has(this.queues, name)) {
+      this.log.trace('Connection.assertQueue() called for pre-existing queue', name);
       return this.queues[name];
     }
+    this.log.trace('Connection.assertQueue() called for unknown queue', name);
     return this.createQueue(name, options);
   }
 
@@ -167,6 +223,7 @@ module.exports = class Connection extends Emitter {
     }
 
     if (this.responseQueue) {
+      this.log.trace('Connection.createResponseQueue() called but responseQueue already exists');
       return this.responseQueue;
     }
 
@@ -178,17 +235,23 @@ module.exports = class Connection extends Emitter {
       this.handleRequestCallback(message.properties.correlationId, JSON.parse(message.content));
     }
 
+    this.log.trace('Connection.createResponseQueue() created a new responseQueue');
     return this.responseQueue;
   }
 
   handleRequestCallback (id, body) {
     var fn = _.get(this.pendingResponses, id);
     if (fn) {
+      this.log.trace('Connection.handleRequestCallback() triggering callback', {id, body})
       fn(body.err, body.result);
-    }    
+    } else {
+      this.log.trace('Connection.handleRequestCallback() called with unknown ID', id);
+    }
   }
 
   addRequestCallback (options) {
+    this.log.trace('Connection.addRequestCallback called', _.omit(options, 'bunyan'))
+    
     // ensure the RQ is created
     this.createResponseQueue();
 
@@ -199,8 +262,10 @@ module.exports = class Connection extends Emitter {
           if (err.isError) {
             err = _.extend(new Error(err.message), err)
           }
+          this.log.trace('Connection(requestCallback) rejected with error', err)
           return reject(err);
         } else {
+          this.log.trace('Connection(requestCallback) resolved', res)
           return resolve(res);
         }
       });

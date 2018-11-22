@@ -22,7 +22,12 @@ module.exports = class Queue extends Emitter {
       bypass: false
     });
 
-    this.channel = connection.createChannel();
+    if (this.log.child) {
+      this.log = this.log.child({queue: this.name})
+    }
+    this.log.trace = this.connection.log.trace.bind(this.connection.log, {queue: this.name})
+
+    this.channel = connection.createChannel(this.name);
     this.channel.addSetup(this.setup.bind(this));
 
     this.channel.on('connect', () => this.emit('connect', this));
@@ -31,15 +36,15 @@ module.exports = class Queue extends Emitter {
     this.channel.on('drop', this.emit.bind(this, 'drop'));
 
     this.channel.on('connect', () => {
-      this.log.info({queue: this.name}, 'Queue Connected');
+      this.log.info('Queue Connected');
       this.connected = true
     });
     this.channel.on('close', () => {
-      this.log.info({queue: this.name}, 'Queue Closed');
+      this.log.info('Queue Closed');
       this.connected = false
     });
-    this.channel.on('error', this.log.error.bind(this.log, {queue: this.name}, 'RabbitMQ Queue Error!'));
-    this.channel.on('drop', this.log.error.bind(this.log, {queue: this.name}, 'RabbitMQ Queue Drop!'));
+    this.channel.on('error', this.log.error.bind(this.log, 'RabbitMQ Queue Error!'));
+    this.channel.on('drop', this.log.error.bind(this.log, 'RabbitMQ Queue Drop!'));
 
     this.lastPublish = 0;
     this.lastComplete = 0;
@@ -50,7 +55,20 @@ module.exports = class Queue extends Emitter {
     this.on('partFailure', this.onPartFailure.bind(this));
     this.on('fullFailure', this.onFullFailure.bind(this));
 
-    setInterval(this.checkQueue.bind(this), 15000);
+    this.log.trace('Queue.constructor starting with options', this.options);
+    var self = this;
+    this.onAny((event, value) => {
+      if (_.has(value, 'message.properties.messageId')) {
+        value = '[Job: ' + value.message.properties.messageId + ']'
+      } else if (_.has(value, 'messageId')) {
+        value = '[Job: ' + value.messageId + ']'        
+      } else if (value instanceof Queue) {
+        value = '[Queue: ' + value.name + ']'
+      }
+      this.log.trace('Queue{' + event + '} triggered', value);
+    });
+
+    setInterval(() => this.status(false), 5000)
   }
 
   setup (channel) {
@@ -72,8 +90,12 @@ module.exports = class Queue extends Emitter {
     }
 
     return promise.then((result) => {
+      result = _.merge({}, result[0], result[3]);
       // bind and prefetch have no interesting information
-      this.emit('setup', _.merge({}, result[0], result[3]));
+      this.emit('setup', result);
+    }, (err) => {
+      this.log.trace('Queue.setup() rejected', err)
+      return err
     });
   }
 
@@ -82,10 +104,12 @@ module.exports = class Queue extends Emitter {
   }
 
   purge () {
+    this.log.trace('Queue.purge() called')
     return this.channel._channel.purgeQueue(this.options.fullName);
   }
 
   delete () {
+    this.log.trace('Queue.delete() called')
     return this.channel._channel.deleteQueue(this.options.fullName);
   }
 
@@ -100,12 +124,11 @@ module.exports = class Queue extends Emitter {
         : Promise.resolve({connected: false});
     }
 
-    var type = this.name;
     return this.channel._channel.checkQueue(this.options.fullName).then((ok) => {
       // stats the number of messages and consumers every 30 seconds
-      this.stats('increment', type, 'pending', this.pending);
-      this.stats('increment', type, 'consumers', ok.consumerCount);
-      this.stats('increment', type, 'messages', ok.messageCount);
+      this.stats('increment', this.name, 'pending', this.pending);
+      this.stats('increment', this.name, 'consumers', ok.consumerCount);
+      this.stats('increment', this.name, 'messages', ok.messageCount);
       this.emit('check', {pendingCount: this.pending, consumerCount: ok.consumerCount, messageCount: ok.messageCount});
 
       return {
@@ -114,25 +137,6 @@ module.exports = class Queue extends Emitter {
         consumerCount: ok.consumerCount,
         messageCount: ok.messageCount
       };
-    });
-  }
-
-  checkQueue () {
-    this.status().then((result) => {
-      // # manually jog the queue every second, perhaps
-      // lag = Math.abs(Date.now() - this.lastComplete)
-      // timeout = (this.options.timeout or 60000) * 2
-      // if ok.messageCount > 0 and (@pending is 0 or lag > timeout)
-      //   @pending = 0
-      //   @channel.recover().then (outcome) =>
-      //     @log.info {type}, 'RECOVER', outcome
-      //     @channel.get(type)
-      //   .then (message) =>
-      //     if message
-      //       @log.info {type}, 'Manually retrieved message, consuming'
-      //       @processJob message
-      //     else
-      //       @log.info {type}, 'No message retrieved despite count=' + ok.messageCount + '. Investigate.'
     });
   }
 
@@ -151,6 +155,7 @@ module.exports = class Queue extends Emitter {
       this.log.warn({queue: this.name}, 'Empty job received');
       return;
     }
+    this.log.trace('Queue.processJob() received a Job', message.properties.messageId, message.content.toString());
     this.pending++;
     var job = new Job(this.name, this);
     return job.process(message);

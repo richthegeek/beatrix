@@ -6,6 +6,8 @@ Built on top of [amqp-connection-manager](https://github.com/benbria/node-amqp-c
 
 Changed in version 3 to be entirely promise-based.
 
+Strongly recommended that you use Bunyan or similar library.
+
 ## Example Usage
 ```javascript
 const Beatrix = require('beatrix')({
@@ -48,6 +50,7 @@ Beatrix.request('echo', {text: 'test'}).then((result) => {
 * `responseQueue.name`: defaults to a hopefully-unique string like "localhost.beatrix.81933.response.queue"
 * `responseQueue.messageTtl`: (default: 10 minutes)
 * `queues`: optional object containing queue definitions to immediately instatiate, see "Queue Options".
+* `debug`: (default: false) wether to trigger log.trace and debug('beatrix') output on most actions
 
 ### methods
 * `on/once(event, callback)`: trigger the passed callback when this event occurs.

@@ -15,6 +15,8 @@ module.exports = class Job {
     this.channel = queue.channel;
     this.stats = queue.connection.stats;
     this.log = queue.connection.log;
+
+    this.log.trace = this.connection.log.trace;
   }
 
   mergePublishOptions (options) {
@@ -53,7 +55,7 @@ module.exports = class Job {
       options.headers.bunyan = _.omit(options.bunyan.fields, ['name', 'hostname', 'pid'])
     }
 
-    return options
+    return _.omit(options, ['bunyan', 'timeout', 'delay', 'durable', 'autoDelete', 'process', 'concurrency'])
   }
 
   getDelay (attempt, options) {
@@ -95,6 +97,11 @@ module.exports = class Job {
       return Promise.reject("Rejecting publish due to too many attempts: ${options.headers.attempts} >= ${options.headers.maxAttempts}");
     }
 
+    if (this.log.child) {
+      this.log = this.log.child({queue: this.type, id: options.messageId, request: !! options.replyTo, exchange: options.exchange, routingKey: options.routingKey})
+      this.log.trace = this.connection.log.trace;
+    }
+
     /*
       This codeblock allows the queue to instantly run a job in this process
        if the process does not have a pending queue larger than the defined concurrency.
@@ -102,13 +109,14 @@ module.exports = class Job {
       The pending++ and pending-- is to prevents jobs processed in the next tick not being counted.
       It assumes that the local process is capable of processing the job.
     */
-    if (options.bypass && options.concurrency > this.queue.pending) {
+    if (options.bypass && this.queue.options.concurrency > this.queue.pending) {
       options.bypassed = true;
       this.queue.pending++
+      this.log.trace('Job.publish() triggered a bypass, with ' + this.queue.pending + ' active bypass jobs');
       return new Promise((resolve, reject) => {
         process.nextTick(() => {
           this.queue.pending--
-          this.log.info({queue: this.type, id: options.messageId, request: !! options.replyTo, exchange: options.exchange, routingKey: options.routingKey}, 'Immediately ran job in queue', body);
+          this.log.info('Immediately ran job in queue', body);
           this.queue.processJob({
             fields: {},
             properties: options,
@@ -118,13 +126,16 @@ module.exports = class Job {
       })
     }
 
+    this.log.trace('Job.publish() publishing', options, body)
     var promise = this.channel.publish(options.exchange, options.routingKey, body, options);
 
     promise.then((a,b) => {
       this.queue.emit('publish', _.extend({}, options, {body})); // should set lastPublish time
       this.log.info({queue: this.type, id: options.messageId, request: !! options.replyTo, exchange: options.exchange, routingKey: options.routingKey}, 'Published job to queue', body);
+      return options;
     }, (err) => {
       this.log.error({queue: this.type, id: options.messageId, request: !! options.replyTo, exchange: options.exchange, routingKey: options.routingKey, err: err}, 'Could not publish job!', body);
+      return err;
     });
 
     return promise;
@@ -145,6 +156,8 @@ module.exports = class Job {
   }
 
   process (message) {
+    this.log.trace = this.log.trace.bind(this.log, {messageId: message.properties.messageId})
+    this.log.trace('Job.process() got message', message);
     var props = message.properties;
     var headers = props.headers;
     headers.attempts += 1;
@@ -154,8 +167,13 @@ module.exports = class Job {
 
     // support for bunyan child
     message.log = this.log;
-    if (_.has(headers, 'bunyan') && message.log.child) {
-      message.log = message.log.child(headers.bunyan);
+    if (message.log.child) {
+      message.log = message.log.child(headers.bunyan || {}).child({
+        queue: this.type,
+        id: message.properties.messageId,
+        attempt: message.attempt,
+        delaySincePublished: Date.now() - message.properties.timestamp
+      })
     }
 
     message.finished = false
@@ -164,10 +182,12 @@ module.exports = class Job {
         return message.log.fatal(this.processLogMeta(message), 'Job was already acked/nacked');
       }
 
+      this.log.trace('Job.process().finish() called', {err, result, final})
       var reply = props.correlationId && props.replyTo && (final || !err);
 
       message.finished = true;
       if (!props.bypassed) {
+        this.log.trace('Job.process().finish() calling channel.ack()')
         this.channel.ack(message);
       }
 
@@ -177,6 +197,7 @@ module.exports = class Job {
         if (props.bypassed) {
           this.connection.handleRequestCallback(props.correlationId, body);
         } else {
+          this.log.trace('Job.process().finish() replying with sendToQueue', {queue: props.replyTo, correlationId: props.correlationId, body: body})
           this.channel.sendToQueue(props.replyTo, body, {correlationId: props.correlationId})
         }
       } else {
@@ -206,9 +227,11 @@ module.exports = class Job {
       message.resolve = resolve;
       this.queue.options.process(message);
     }).then((result) => {
+      this.log.trace('Job.process() resolved with:', result)
       this.processSuccess(message, result);
       this.processFinish(message);
-    }).catch((err, a, b) => {
+    }).catch((err) => {
+      this.log.trace('Job.process() rejected with:', err)
       if (err instanceof Error) {
         err = _.extend({}, {
           isError: true,
@@ -222,12 +245,8 @@ module.exports = class Job {
   }
 
   processLogMeta (message, extra) {
-     return _.extend(_.pickBy(extra, Boolean), {
-      queue: this.type,
-      id: message.properties.messageId,
-      attempt: message.attempt,
+    return _.extend(_.pickBy(extra, Boolean), {
       delaySinceStarted: Date.now() - message.properties.headers.startedAt,
-      delaySincePublished: Date.now() - message.properties.timestamp
     });
   }
 
