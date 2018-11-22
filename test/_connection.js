@@ -7,7 +7,18 @@ before((done) => {
     return done();
   }
 
+  var uri = process.env.RABBIT_URI
+  if (!uri) {
+    let user = process.env.RABBIT_USERNAME || 'guest';
+    let pass = process.env.RABBIT_PASSWORD || 'guest';
+    let host = process.env.RABBIT_HOST || '127.0.0.1';
+    let port = process.env.RABBIT_PORT || '5672';
+    let vhost = process.env.RABBIT_VPORT || ''
+    uri = 'amqp://' + user + ':' + pass + '@' + host + ':' + port + '/' + vhost
+  }
+
   global.connection = Beatrix({
+    uri: uri,
     name: 'testing',
     queues: {
       testcore: {

@@ -1,6 +1,12 @@
+services:
+  rabbit:
+    image: rabbitmq:3.7.8
+
 pipeline:
   build:
     image: node:8
+    environment:
+      - RABBIT_HOST=rabbit
     commands:
       - npm install
       - npm run test
