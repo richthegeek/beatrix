@@ -1,6 +1,7 @@
 'use strict';
 
 var amqp = require('amqp-connection-manager');
+var amqpMock = require('./mock');
 
 var _ = require('lodash');
 var os = require('os');
@@ -131,7 +132,12 @@ module.exports = class Connection extends Emitter {
       return this;
     }
 
-    this.amqp = amqp.connect(_.castArray(this.options.uri));
+    if (this.options.mock) {
+      this.amqp = amqpMock.connect(_.castArray(this.options.uri));
+    } else {
+      this.amqp = amqp.connect(_.castArray(this.options.uri));
+    }
+
     this.amqp.on('connect', (connection) => {
       this.connection = connection;
       this.emit('connect', this);
