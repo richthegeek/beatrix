@@ -197,6 +197,11 @@ class MockExchange {
     this.type = type;
     this.options = options;
 
+    if (type === 'x-delayed-message') {
+      this.type = _.get(options, 'arguments.x-delayed-type', 'direct');
+      this.subtype = 'delay';
+    }
+
     this.bindings = [];
   }
 
@@ -210,6 +215,11 @@ class MockExchange {
   }
   
   async publish (routingKey, message) {
+    let messageDelay = _.get(message, 'properties.headers.x-delay');
+    if (this.subtype === 'delay' && messageDelay) {
+      await new Promise((resolve, reject) => setTimeout(resolve, messageDelay))
+    }
+
     // TODO: Support header/fanout exchanges.
     // This acts as just a 'direct' or 'topic' exchange
     for (let i = 0; i < this.bindings.length; i++) {
