@@ -19,36 +19,14 @@ module.exports = class Connection extends Emitter {
   constructor (options) {
     super();
 
-    this.name = _.get(options, 'name', 'beatrix');
+    this.options = this.getOptions(options);
 
-    this.options = _.defaultsDeep(options, {
-      debug: false,
-      log: new console.Console(process.stdout, process.stderr),
-      stats: (type, queue, stat, value) => {},
-      uri: 'amqp://guest:guest@localhost/',
-      exchange: {
-        name: this.name,
-        autoDelete: false,
-        durable: true,
-        type: 'x-delayed-message',
-        arguments: {
-          'x-delayed-type': 'direct'
-        }
-      },
-      responseQueue: {
-        enabled: true,
-        name: [os.hostname(), this.name, process.pid, 'responseQueue'].join('.'),
-        fullName: [os.hostname(), this.name, process.pid, 'responseQueue'].join('.'),
-        routingKey: [os.hostname(), this.name, process.pid, 'responseQueue'].join('.'),
-        autoDelete: true,
-        exclusive: true,
-        messageTtl: 600 * 1000, // clear messages out after 10 minutes
-      },
-      onUnhandled: (message) => {
-        this.log.error('Unhandled message', message);
-        message.nack();
-      }
-    });
+    this.name = this.options.name;
+
+    this.options.onUnhandled = (message) => {
+      this.log.error('Unhandled message', message);
+      message.nack();
+    }
 
     const self = this; // annoying, need arguments and `this` here
     this.options.log.trace = this.options.debug ? _.wrap(this.options.log.trace, function (trace) {
@@ -89,6 +67,36 @@ module.exports = class Connection extends Emitter {
       }
       this.log.trace('Connection{' + event + '} triggered', value);
     })
+  }
+
+  getOptions (options) {
+    var name = _.get(options, 'name', 'beatrix');
+    var responseQueueName = [os.hostname(), name, process.pid, _.uniqueId(), 'responseQueue'].join('.');
+
+    return _.defaultsDeep({}, options, {
+      debug: false,
+      log: new console.Console(process.stdout, process.stderr),
+      stats: (type, queue, stat, value) => {},
+      uri: 'amqp://guest:guest@localhost/',
+      exchange: {
+        name: name,
+        autoDelete: false,
+        durable: true,
+        type: 'x-delayed-message',
+        arguments: {
+          'x-delayed-type': 'direct'
+        }
+      },
+      responseQueue: {
+        enabled: true,
+        name: responseQueueName,
+        fullName: responseQueueName,
+        routingKey: responseQueueName,
+        autoDelete: true,
+        exclusive: true,
+        messageTtl: 600 * 1000, // clear messages out after 10 minutes
+      }
+    });    
   }
 
   isConnected () {

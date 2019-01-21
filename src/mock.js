@@ -18,6 +18,13 @@ class MockAmqpConnectionManager extends Emitter {
     return manager;
   }
 
+  // mock-specific function for deleting all settings
+  resetMock () {
+    this.channels = [];
+    this.exchanges = {};
+    this.queues = {};
+  }
+
   connect () {
     process.nextTick(() => {
       this.connected = true;
