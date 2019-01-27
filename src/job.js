@@ -1,10 +1,11 @@
 'use strict';
 
-var _ = require('lodash');
-var uuid = require('uuid');
-var Backoff = require('backoff-strategies');
+const _ = require('lodash');
+const uuid = require('uuid');
+const debug = require('debug')('beatrix');
+const Backoff = require('backoff-strategies');
 
-var TimeoutPromise = require('./promiseTimeout');
+const TimeoutPromise = require('./promiseTimeout');
 
 module.exports = class Job {
 
@@ -15,8 +16,6 @@ module.exports = class Job {
     this.channel = queue.channel;
     this.stats = queue.connection.stats;
     this.log = queue.connection.log;
-
-    this.log.trace = this.connection.log.trace;
   }
 
   mergePublishOptions (options) {
@@ -67,24 +66,27 @@ module.exports = class Job {
       return undefined;
     }
 
-    var delayProps = {
+    const delayProps = {
       minValue: 0,
       maxValue: options.maxDelay,
       multiplier: options.delay
     }
 
-    var strategy = _.upperFirst(options.delayStrategy)
-    if (strategy === 'Defined') {
-      strategy = Backoff.Defined;
-      delayProps.values = _.castArray(options.delay);
-      delayProps.multiplier = 1;
-    } else if (strategy === 'Linear') {
-      strategy = Backoff.Linear
-    } else if (strategy === 'Polynomial') {
-      strategy = Backoff.Polynomial;
-      delayProps.factor = options.delayFactor || 2;
-    } else {
-      strategy = Backoff.Exponential;
+    let strategy = Backoff.Exponential;
+
+    switch (_.upperFirst(options.delayStrategy)) {
+      case 'Defined':
+        strategy = Backoff.Defined;
+        delayProps.values = _.castArray(options.delay);
+        delayProps.multiplier = 1;
+        break;
+      case 'Linear':
+        strategy = Backoff.Linear;
+        break;
+      case 'Polynomial':
+        strategy = Backoff.Polynomial;
+        delayProps.factor = options.delayFactor || 2;
+        break;
     }
 
     return new strategy(delayProps).get(attempt);
@@ -97,9 +99,9 @@ module.exports = class Job {
       return Promise.reject("Rejecting publish due to too many attempts: ${options.headers.attempts} >= ${options.headers.maxAttempts}");
     }
 
+    const logProperties = {queue: this.type, id: options.messageId, request: !! options.replyTo, exchange: options.exchange, routingKey: options.routingKey}
     if (this.log.child) {
-      this.log = this.log.child({queue: this.type, id: options.messageId, request: !! options.replyTo, exchange: options.exchange, routingKey: options.routingKey})
-      this.log.trace = this.connection.log.trace;
+      this.log = this.log.child(logProperties)
     }
 
     /*
@@ -112,7 +114,7 @@ module.exports = class Job {
     if (options.bypass && this.queue.options.concurrency > this.queue.pending) {
       options.bypassed = true;
       this.queue.pending++
-      this.log.trace('Job.publish() triggered a bypass, with ' + this.queue.pending + ' active bypass jobs');
+      debug(logProperties, 'Job.publish() triggered a bypass, with ' + this.queue.pending + ' active bypass jobs');
       return new Promise((resolve, reject) => {
         process.nextTick(() => {
           this.queue.pending--
@@ -126,8 +128,8 @@ module.exports = class Job {
       })
     }
 
-    this.log.trace('Job.publish() publishing', options, body)
-    var promise = this.channel.publish(options.exchange, options.routingKey, body, options);
+    debug('Job.publish() publishing', options, body)
+    const promise = this.channel.publish(options.exchange, options.routingKey, body, options);
 
     promise.then((a,b) => {
       this.queue.emit('publish', _.extend({}, options, {body})); // should set lastPublish time
@@ -156,25 +158,32 @@ module.exports = class Job {
   }
 
   process (message) {
-    this.log.trace = this.log.trace.bind(this.log, {messageId: message.properties.messageId})
-    this.log.trace('Job.process() got message', message);
-    var props = message.properties;
-    var headers = props.headers;
+    const props = message.properties;
+    const headers = props.headers;
     headers.attempts += 1;
     headers.startedAt = Date.now();
 
     this.stats('timing', this.type, 'startDelay', Date.now() - props.timestamp);
 
     // support for bunyan child
+    const logProperties = _.defaults({
+      queue: this.type,
+      id: message.properties.messageId,
+      attempt: message.attempt,
+      get delaySincePublished () {
+        return Date.now() - props.timestamp
+      },
+      get delaySinceStarted () {
+        return Date.now() - headers.startedAt
+      }
+    }, headers.bunyan);
+
     message.log = this.log;
     if (message.log.child) {
-      message.log = message.log.child(headers.bunyan || {}).child({
-        queue: this.type,
-        id: message.properties.messageId,
-        attempt: message.attempt,
-        delaySincePublished: Date.now() - message.properties.timestamp
-      })
+      message.log = message.log.child(logProperties);
     }
+    
+    debug(logProperties, 'Job.process() got message', message);
 
     message.finished = false
     message.finish = (err, result, final) => {
@@ -182,22 +191,22 @@ module.exports = class Job {
         return message.log.fatal(this.processLogMeta(message), 'Job was already acked/nacked');
       }
 
-      this.log.trace('Job.process().finish() called', {err, result, final})
-      var reply = props.correlationId && props.replyTo && (final || !err);
+      debug(logProperties, 'Job.process().finish() called', {err, result, final})
 
       message.finished = true;
       if (!props.bypassed) {
-        this.log.trace('Job.process().finish() calling channel.ack()')
+        debug(logProperties, 'Job.process().finish() calling channel.ack()')
         this.channel.ack(message);
       }
 
-      var body = {err, result, final};
+      const reply = props.correlationId && props.replyTo && (final || !err);
+      const body = {err, result, final};
       if (reply) {
         message.log.info(this.processLogMeta(message), 'Replying', body);
         if (props.bypassed) {
           this.connection.handleRequestCallback(props.correlationId, body);
         } else {
-          this.log.trace('Job.process().finish() replying with sendToQueue', {queue: props.replyTo, correlationId: props.correlationId, body: body})
+          debug(logProperties, 'Job.process().finish() replying with sendToQueue', {queue: props.replyTo, correlationId: props.correlationId, body: body})
           this.channel.sendToQueue(props.replyTo, body, {correlationId: props.correlationId})
         }
       } else {
@@ -227,11 +236,11 @@ module.exports = class Job {
       message.resolve = resolve;
       this.queue.options.process(message);
     }).then((result) => {
-      this.log.trace('Job.process() resolved with:', result)
+      debug(logProperties, 'Job.process() resolved with:', result)
       this.processSuccess(message, result);
       this.processFinish(message);
     }).catch((err) => {
-      this.log.trace('Job.process() rejected with:', err)
+      debug(logProperties, 'Job.process() rejected with:', err)
       if (err instanceof Error) {
         err = _.extend({}, {
           isError: true,

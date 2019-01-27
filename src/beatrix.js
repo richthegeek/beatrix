@@ -1,18 +1,18 @@
-var Connection = require('./connection');
-var Queue = require('./queue');
-var Job = require('./job');
+const Connection = require('./connection');
+const Queue = require('./queue');
+const Job = require('./job');
 
-var connections = {};
+const connections = new Map();
 
 module.exports = (options) => {
   options = Connection.prototype.getOptions(options);
-  var key = [options.uri, options.exchange.name].join('::');
+  const key = [options.uri, options.exchange.name].join('::')
 
-  if (options.deduplicateConnection !== false && connections[key]) {
-    return connections[key];
+  if (options.deduplicateConnection === false || !connections.has(key)) {
+    connections.set(key, new Connection(options).connect());
   }
 
-  return connections[key] = new Connection(options).connect();
+  return connections.get(key);
 }
 
 module.exports.Connection = Connection

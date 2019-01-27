@@ -1,8 +1,9 @@
 'use strict';
 
-var _ = require('lodash');
-var Job = require('./job');
-var Emitter = require('eventemitter2').EventEmitter2;
+const _ = require('lodash');
+const debug = require('debug')('beatrix');
+const Job = require('./job');
+const Emitter = require('eventemitter2').EventEmitter2;
 
 module.exports = class Queue extends Emitter {
 
@@ -25,7 +26,6 @@ module.exports = class Queue extends Emitter {
     if (this.log.child) {
       this.log = this.log.child({queue: this.name})
     }
-    this.log.trace = this.connection.log.trace.bind(this.connection.log, {queue: this.name})
 
     this.channel = connection.createChannel(this.name);
     this.channel.addSetup(this.setup.bind(this));
@@ -55,8 +55,7 @@ module.exports = class Queue extends Emitter {
     this.on('partFailure', this.onPartFailure.bind(this));
     this.on('fullFailure', this.onFullFailure.bind(this));
 
-    this.log.trace('Queue.constructor starting with options', this.options);
-    var self = this;
+    debug('Queue.constructor starting with options', this.options);
     this.onAny((event, value) => {
       if (_.has(value, 'message.properties.messageId')) {
         value = '[Job: ' + value.message.properties.messageId + ']'
@@ -65,38 +64,45 @@ module.exports = class Queue extends Emitter {
       } else if (value instanceof Queue) {
         value = '[Queue: ' + value.name + ']'
       }
-      this.log.trace('Queue{' + event + '} triggered', value);
+      debug('Queue{' + event + '} triggered', value);
     });
 
     setInterval(() => this.status(false), 5000)
   }
 
   setup (channel) {
-    var queueOptions = _.omit(this.options, ['concurrency', 'routingKey']);
+    const queueOptions = _.omit(this.options, ['concurrency', 'routingKey']);
 
-    var process = 'function' === typeof this.options.process;
+    const hasProcessor = 'function' === typeof this.options.process;
 
-    var promise = Promise.all([
+    const promise = Promise.all([
       channel.assertQueue(this.options.fullName, queueOptions),
       channel.bindQueue(this.options.fullName, this.connection.exchange.name, this.options.routingKey),
-      process ? channel.prefetch(this.options.concurrency) : Promise.resolve(0),
-      process ? channel.consume(this.options.fullName, this.processJob.bind(this)) : Promise.resolve(0)
+      hasProcessor ? channel.prefetch(this.options.concurrency) : Promise.resolve(0),
+      hasProcessor ? channel.consume(this.options.fullName, this.processJob.bind(this)) : Promise.resolve(0)
     ]);
 
-    if (process) {
-      this.log.info({queue: this.name}, 'Queue is being consumed by this process');
+    if (hasProcessor) {
+      this.log.info('Queue is being consumed by this process');
     } else {
-      this.log.info({queue: this.name}, 'Queue is not being consumed by this process');
+      this.log.info('Queue is not being consumed by this process');
     }
 
     return promise.then((result) => {
       result = _.merge({}, result[0], result[3]);
       // bind and prefetch have no interesting information
       this.emit('setup', result);
+      return result;
     }, (err) => {
-      this.log.trace('Queue.setup() rejected', err)
+      debug('Queue.setup() rejected', err)
       return err
     });
+  }
+
+  prefetch (value) {
+    return this.channel._channel.prefetch(value).then(() => {
+      this.log.info('Channel prefetch changed to ' + value)
+    })
   }
 
   close () {
@@ -104,12 +110,12 @@ module.exports = class Queue extends Emitter {
   }
 
   purge () {
-    this.log.trace('Queue.purge() called')
+    debug('Queue.purge() called')
     return this.channel._channel.purgeQueue(this.options.fullName);
   }
 
   delete () {
-    this.log.trace('Queue.delete() called')
+    debug('Queue.delete() called')
     return this.channel._channel.deleteQueue(this.options.fullName);
   }
 
@@ -141,24 +147,21 @@ module.exports = class Queue extends Emitter {
   }
 
   publish (body, options) {
-    var job = new Job(this.name, this);
-    return job.publish(body, options);
+    return new Job(this.name, this).publish(body, options);
   }
 
   request (body, options) {
-    var job = new Job(this.name, this);
-    return job.request(body, options);
+    return new Job(this.name, this).request(body, options);
   }
 
   processJob (message) {
     if (!message) {
-      this.log.warn({queue: this.name}, 'Empty job received');
+      this.log.warn('Empty job received');
       return;
     }
-    this.log.trace('Queue.processJob() received a Job', message.properties.messageId, message.content.toString());
+    debug('Queue.processJob() received a Job', message.properties.messageId, message.content.toString());
     this.pending++;
-    var job = new Job(this.name, this);
-    return job.process(message);
+    return new Job(this.name, this).process(message);
   }
 
   onSuccess (message, result) {

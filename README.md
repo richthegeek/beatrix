@@ -50,7 +50,6 @@ Beatrix.request('echo', {text: 'test'}).then((result) => {
 * `responseQueue.name`: defaults to a hopefully-unique string like "localhost.beatrix.81933.response.queue"
 * `responseQueue.messageTtl`: (default: 10 minutes)
 * `queues`: optional object containing queue definitions to immediately instatiate, see "Queue Options".
-* `debug`: (default: false) wether to trigger log.trace and debug('beatrix') output on most actions
 * `mock`: (default: false) wether to use a light mocking interface instead of a real RabbitMQ connection. Does not support acking/nacking or concurrency at this time.
 
 ### methods
