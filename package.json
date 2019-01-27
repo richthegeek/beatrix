@@ -6,6 +6,9 @@
   "scripts": {
     "test": "./node_modules/.bin/mocha"
   },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.com"
+  },
   "keywords": [
     "rabbit",
     "rabbitmq",
