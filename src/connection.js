@@ -174,7 +174,7 @@ module.exports = class Connection extends Emitter {
       return this.queues[routingKey][method](body, options);
     }
 
-    const channel = this.responseQueue ? this.responseQueue.channel : this.channel;
+    let channel = this.responseQueue ? this.responseQueue.channel : this.channel;
     if (!channel) {
       this.channel = channel = this.createChannel('connection');
     }
