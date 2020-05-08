@@ -1,10 +1,11 @@
 {
   "name": "beatrix",
-  "version": "3.5.2",
+  "version": "3.6.0",
   "description": "Opinionated RabbitMQ implementation",
   "main": "index.js",
   "scripts": {
-    "test": "./node_modules/.bin/mocha --exit"
+    "test": "./node_modules/.bin/mocha --exit",
+    "test:docker": "docker run --rm -it $(docker build -q -f Dockerfile.test .)"
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.com"
@@ -25,15 +26,15 @@
   },
   "homepage": "https://github.com/richthegeek/beatrix#readme",
   "dependencies": {
-    "amqp-connection-manager": "^2.3.0",
-    "amqplib": "^0.5.2",
+    "amqp-connection-manager": "^3.2.0",
+    "amqplib": "^0.5.5",
     "backoff-strategies": "^1.1.0",
     "debug": "^4.1.0",
-    "eventemitter2": "^5.0.1",
-    "lodash": "^4.17.11",
-    "uuid": "^3.3.2"
+    "eventemitter2": "^6.4.0",
+    "lodash": "^4.17.15",
+    "uuid": "^8.0.0"
   },
   "devDependencies": {
-    "mocha": "^6.0.1"
+    "mocha": "^7.1.2"
   }
 }

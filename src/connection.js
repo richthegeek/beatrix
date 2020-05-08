@@ -52,7 +52,7 @@ module.exports = class Connection extends Emitter {
       if (_.has(value, 'message.properties.messageId')) {
         value = '[Job: ' + value.message.properties.messageId + ']'
       } else if (_.has(value, 'messageId')) {
-        value = '[Job: ' + value.messageId + ']'        
+        value = '[Job: ' + value.messageId + ']'
       } else if (value instanceof Queue) {
         value = '[Queue: ' + value.name + ']'
       } else if (value instanceof Connection) {
@@ -89,7 +89,7 @@ module.exports = class Connection extends Emitter {
         exclusive: true,
         messageTtl: 600 * 1000, // clear messages out after 10 minutes
       }
-    });    
+    });
   }
 
   isConnected () {
@@ -257,7 +257,7 @@ module.exports = class Connection extends Emitter {
 
   addRequestCallback (options) {
     debug('Connection.addRequestCallback called', _.omit(options, 'bunyan'))
-    
+
     // ensure the RQ is created
     this.createResponseQueue();
 

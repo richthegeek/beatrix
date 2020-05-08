@@ -25,7 +25,7 @@ describe('Retries', () => {
           message.retry(true);
           message.reject('retry please');
         } else {
-          assert(Date.now() - time < 50, 'message was delayed during processing unacceptably');
+          assert(Date.now() - time < 150, 'message was delayed during processing unacceptably');
           assert(message.firstAttempt == false, 'message.firstAttempt was true for the last attempt');
           assert(message.lastAttempt, 'message.lastAttempt was not true for the last attempt');
           message.resolve('ok' + time);
@@ -55,7 +55,7 @@ describe('Retries', () => {
           message.reject('retry please');
         } else {
           assert(Date.now() - time >= 500, 'message attempt 2 was not delayed for at least 500ms');
-          assert(Date.now() - time <= 600, 'message attempt 2 was much longer than 500ms');
+          assert(Date.now() - time <= 1000, 'message attempt 2 was much longer than 500ms');
           message.resolve('ok' + time);
         }
         i++;

@@ -182,7 +182,7 @@ module.exports = class Job {
     if (message.log.child) {
       message.log = message.log.child(logProperties);
     }
-    
+
     debug(logProperties, 'Job.process() got message', message);
 
     message.finished = false
